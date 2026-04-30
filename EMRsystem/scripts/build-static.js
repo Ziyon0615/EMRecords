@@ -7,7 +7,6 @@ const staticFiles = [
   'admin-dashboard.html',
   'admin.html',
   'api-config.js',
-  'app.js',
   'assessment.html',
   'dashboard.html',
   'doctor-dashboard.html',
@@ -30,6 +29,8 @@ fs.mkdirSync(outDir, { recursive: true });
 for (const file of staticFiles) {
   fs.copyFileSync(path.join(root, file), path.join(outDir, file));
 }
+
+fs.copyFileSync(path.join(root, 'app.js'), path.join(outDir, 'auth-client.js'));
 
 fs.writeFileSync(
   path.join(outDir, 'vercel.json'),
