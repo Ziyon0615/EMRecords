@@ -855,6 +855,126 @@ async function getAdminStats() {
   };
 }
 
+async function getAdminReportData() {
+  const userRoleCounts = await getAll(`
+    SELECT role, COUNT(*) AS count
+    FROM users
+    GROUP BY role
+    ORDER BY role
+  `);
+
+  const userStatusCounts = await getAll(`
+    SELECT status, COUNT(*) AS count
+    FROM users
+    GROUP BY status
+    ORDER BY status
+  `);
+
+  const recentUsers = await getAll(`
+    SELECT id, role, email, display_name, status, created_at
+    FROM users
+    ORDER BY created_at DESC
+    LIMIT 10
+  `);
+
+  const consultationStatusCounts = await getAll(`
+    SELECT status, COUNT(*) AS count
+    FROM consultations
+    GROUP BY status
+    ORDER BY count DESC
+  `);
+
+  const consultationDailyTrend = await getAll(`
+    SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count
+    FROM consultations
+    GROUP BY substr(created_at, 1, 10)
+    ORDER BY day DESC
+    LIMIT 14
+  `);
+
+  const recentConsultations = await getAll(`
+    SELECT
+      c.id,
+      c.status,
+      c.concerns,
+      c.consultation_date,
+      c.consultation_time,
+      c.created_at,
+      c.updated_at,
+      pu.display_name AS patient_name,
+      du.display_name AS doctor_name
+    FROM consultations c
+    LEFT JOIN users pu ON c.patient_id = pu.id
+    LEFT JOIN users du ON c.doctor_id = du.id
+    ORDER BY c.updated_at DESC
+    LIMIT 10
+  `);
+
+  const protectedEmrs = (await get(`SELECT COUNT(*) AS count FROM patient_assessments WHERE assessment_encrypted IS NOT NULL AND assessment_encrypted != ''`)).count || 0;
+  const totalEmrs = (await get(`SELECT COUNT(*) AS count FROM patient_assessments`)).count || 0;
+  const passwordResetCounts = await getAll(`
+    SELECT status, COUNT(*) AS count
+    FROM password_reset_requests
+    GROUP BY status
+    ORDER BY status
+  `);
+  const inviteCounts = await getAll(`
+    SELECT
+      CASE
+        WHEN used = 1 THEN 'used'
+        WHEN datetime(expires_at) < datetime('now') THEN 'expired'
+        ELSE 'active'
+      END AS status,
+      COUNT(*) AS count
+    FROM invites
+    GROUP BY status
+    ORDER BY status
+  `);
+  const notificationCounts = await getAll(`
+    SELECT type, COUNT(*) AS count
+    FROM notifications
+    GROUP BY type
+    ORDER BY count DESC
+    LIMIT 10
+  `);
+
+  const totalUsers = (await get(`SELECT COUNT(*) AS count FROM users`)).count || 0;
+  const totalConsultations = (await get(`SELECT COUNT(*) AS count FROM consultations`)).count || 0;
+  const activeConsultations = (await get(`SELECT COUNT(*) AS count FROM consultations WHERE status IN ('pending', 'scheduled', 'under-review')`)).count || 0;
+  const totalMessages = (await get(`SELECT COUNT(*) AS count FROM message_board`)).count || 0;
+  const unreadMessages = (await get(`SELECT COUNT(*) AS count FROM message_board WHERE is_read = 0`)).count || 0;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totals: {
+      totalUsers,
+      totalConsultations,
+      activeConsultations,
+      totalEmrs,
+      protectedEmrs,
+      totalMessages,
+      unreadMessages,
+    },
+    users: {
+      byRole: userRoleCounts || [],
+      byStatus: userStatusCounts || [],
+      recent: recentUsers || [],
+    },
+    consultations: {
+      byStatus: consultationStatusCounts || [],
+      dailyTrend: (consultationDailyTrend || []).reverse(),
+      recent: recentConsultations || [],
+    },
+    security: {
+      protectedEmrs,
+      totalEmrs,
+      passwordResetRequests: passwordResetCounts || [],
+      invites: inviteCounts || [],
+      notifications: notificationCounts || [],
+    },
+  };
+}
+
 async function getAllEMRRecords() {
   const rows = await getAll(`
     SELECT 
@@ -1027,6 +1147,7 @@ module.exports = {
   getAllPatientsWithConsultations,
   getPatientEMR,
   getAdminStats,
+  getAdminReportData,
   getAllEMRRecords,
   getAllConsultations,
   getStaffConsultationQueue,

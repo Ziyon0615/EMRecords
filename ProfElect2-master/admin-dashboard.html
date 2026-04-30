@@ -655,6 +655,117 @@
       box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
     }
 
+    .report-output {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .report-output-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .report-output-header h3 {
+      margin: 0 0 0.35rem 0;
+      color: var(--text-primary);
+    }
+
+    .report-output-header p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .report-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .report-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .report-kpi {
+      border: 1px solid var(--border);
+      border-left: 4px solid #0066cc;
+      border-radius: 8px;
+      padding: 1rem;
+      background: #f8fbff;
+    }
+
+    .report-kpi span {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+    }
+
+    .report-kpi strong {
+      display: block;
+      color: var(--text-primary);
+      font-size: 1.6rem;
+      line-height: 1;
+    }
+
+    .report-section-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .report-panel {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .report-panel h4 {
+      margin: 0;
+      padding: 0.9rem 1rem;
+      background: #f0f4f8;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .report-table th,
+    .report-table td {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .report-table th {
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      background: #fafafa;
+    }
+
+    .report-empty {
+      text-align: center;
+      color: #999;
+      padding: 2rem;
+    }
+
     .modal {
       display: none;
       position: fixed;
@@ -1436,31 +1547,31 @@
             <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
               <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">System Activity Report</h3>
               <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">Generate comprehensive system activity analysis</p>
-              <button class="btn-export" style="width: 100%;">📊 Generate Report</button>
+              <button class="btn-export" style="width: 100%;" data-report-type="system">📊 Generate Report</button>
             </div>
 
             <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
               <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Consultation Analytics</h3>
               <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">View consultation statistics and trends</p>
-              <button class="btn-export" style="width: 100%;">📈 View Analytics</button>
+              <button class="btn-export" style="width: 100%;" data-report-type="consultations">📈 View Analytics</button>
             </div>
 
             <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
               <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Security Report</h3>
               <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">CP-ABE encryption and access control metrics</p>
-              <button class="btn-export" style="width: 100%;">🔐 Security Report</button>
+              <button class="btn-export" style="width: 100%;" data-report-type="security">🔐 Security Report</button>
             </div>
 
             <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
               <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">User Activity Report</h3>
               <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">Detailed breakdown of user interactions</p>
-              <button class="btn-export" style="width: 100%;">👥 User Report</button>
+              <button class="btn-export" style="width: 100%;" data-report-type="users">👥 User Report</button>
             </div>
           </div>
 
           <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: var(--shadow);">
             <h3 style="margin: 0 0 1.5rem 0;">Recent Reports</h3>
-            <div style="text-align: center; color: #999; padding: 2rem;">
+            <div id="recentReportsContent" style="text-align: center; color: #999; padding: 2rem;">
               <p>No reports generated yet. Generate your first report using the buttons above.</p>
             </div>
           </div>
@@ -1667,6 +1778,8 @@
     const statusFilter = document.getElementById('statusFilter');
     const passwordResetStatusFilter = document.getElementById('passwordResetStatusFilter');
     const adminAddUserForm = document.getElementById('adminAddUserForm');
+    const reportButtons = document.querySelectorAll('[data-report-type]');
+    const recentReportsContent = document.getElementById('recentReportsContent');
     const addUserRole = document.getElementById('addUserRole');
     const addPatientFields = document.getElementById('addPatientFields');
     const addUserHint = document.getElementById('addUserHint');
@@ -2124,6 +2237,339 @@
       if (e.target.id === 'qrGenerateModal') {
         closeGenerateModal();
       }
+    });
+
+    function reportValue(value) {
+      if (value === null || value === undefined || value === '') return '—';
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function reportCountMap(rows, labelKey = 'status') {
+      if (!rows?.length) return '<p class="report-empty">No data available.</p>';
+
+      return `
+        <table class="report-table">
+          <thead><tr><th>${reportValue(labelKey)}</th><th>Count</th></tr></thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                <td>${reportValue(row[labelKey] || row.type || row.role || row.status || row.day)}</td>
+                <td>${Number(row.count || 0).toLocaleString()}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function reportTable(rows, columns) {
+      if (!rows?.length) return '<p class="report-empty">No records found.</p>';
+
+      return `
+        <table class="report-table">
+          <thead>
+            <tr>${columns.map(column => `<th>${reportValue(column.label)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                ${columns.map(column => `<td>${reportValue(column.format ? column.format(row[column.key], row) : row[column.key])}</td>`).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function reportKpi(label, value) {
+      return `
+        <div class="report-kpi">
+          <span>${reportValue(label)}</span>
+          <strong>${Number(value || 0).toLocaleString()}</strong>
+        </div>
+      `;
+    }
+
+    function reportPanel(title, html) {
+      return `
+        <div class="report-panel">
+          <h4>${reportValue(title)}</h4>
+          ${html}
+        </div>
+      `;
+    }
+
+    function buildReportDetails(report) {
+      const data = report.data || {};
+      const totals = data.totals || {};
+
+      if (report.type === 'consultations') {
+        return `
+          <div class="report-kpi-grid">
+            ${reportKpi('Total Consultations', totals.totalConsultations)}
+            ${reportKpi('Active Consultations', totals.activeConsultations)}
+          </div>
+          <div class="report-section-grid">
+            ${reportPanel('Consultations by Status', reportCountMap(data.consultations?.byStatus))}
+            ${reportPanel('Daily Consultation Trend', reportCountMap(data.consultations?.dailyTrend, 'day'))}
+            ${reportPanel('Recent Consultations', reportTable(data.consultations?.recent, [
+              { key: 'patient_name', label: 'Patient' },
+              { key: 'doctor_name', label: 'Doctor' },
+              { key: 'status', label: 'Status' },
+              { key: 'updated_at', label: 'Updated', format: value => value ? new Date(value).toLocaleString() : '—' },
+            ]))}
+          </div>
+        `;
+      }
+
+      if (report.type === 'security') {
+        return `
+          <div class="report-kpi-grid">
+            ${reportKpi('Protected EMRs', data.security?.protectedEmrs)}
+            ${reportKpi('Total EMRs', data.security?.totalEmrs)}
+            ${reportKpi('Unread Messages', totals.unreadMessages)}
+          </div>
+          <div class="report-section-grid">
+            ${reportPanel('Password Reset Requests', reportCountMap(data.security?.passwordResetRequests))}
+            ${reportPanel('QR Invites', reportCountMap(data.security?.invites))}
+            ${reportPanel('Notifications by Type', reportCountMap(data.security?.notifications, 'type'))}
+          </div>
+        `;
+      }
+
+      if (report.type === 'users') {
+        return `
+          <div class="report-kpi-grid">
+            ${reportKpi('Total Users', totals.totalUsers)}
+          </div>
+          <div class="report-section-grid">
+            ${reportPanel('Users by Role', reportCountMap(data.users?.byRole, 'role'))}
+            ${reportPanel('Users by Status', reportCountMap(data.users?.byStatus))}
+            ${reportPanel('Recent Users', reportTable(data.users?.recent, [
+              { key: 'display_name', label: 'Name' },
+              { key: 'email', label: 'Email' },
+              { key: 'role', label: 'Role' },
+              { key: 'status', label: 'Status' },
+              { key: 'created_at', label: 'Created', format: value => value ? new Date(value).toLocaleString() : '—' },
+            ]))}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="report-kpi-grid">
+          ${reportKpi('Total Users', totals.totalUsers)}
+          ${reportKpi('Total Consultations', totals.totalConsultations)}
+          ${reportKpi('Protected EMRs', totals.protectedEmrs)}
+          ${reportKpi('Messages', totals.totalMessages)}
+        </div>
+        <div class="report-section-grid">
+          ${reportPanel('Users by Role', reportCountMap(data.users?.byRole, 'role'))}
+          ${reportPanel('Consultations by Status', reportCountMap(data.consultations?.byStatus))}
+          ${reportPanel('QR Invites', reportCountMap(data.security?.invites))}
+        </div>
+      `;
+    }
+
+    function renderAdminReport(report) {
+      window.currentAdminReport = report;
+      recentReportsContent.className = 'report-output';
+      recentReportsContent.removeAttribute('style');
+      recentReportsContent.innerHTML = `
+        <div class="report-output-header">
+          <div>
+            <h3>${reportValue(report.title)}</h3>
+            <p>Generated ${new Date(report.generatedAt).toLocaleString()}</p>
+          </div>
+          <div class="report-actions">
+            <button class="btn-export" onclick="downloadCurrentReportPdf()">Download PDF</button>
+          </div>
+        </div>
+        ${buildReportDetails(report)}
+      `;
+    }
+
+    async function loadAdminReport(type, button) {
+      const originalText = button.textContent;
+
+      try {
+        button.disabled = true;
+        button.textContent = 'Loading...';
+        recentReportsContent.innerHTML = '<p>Loading report...</p>';
+
+        const resp = await fetch(`${API_BASE_URL}/api/admin/reports/${encodeURIComponent(type)}?userId=${authUser.id}`);
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.message || 'Failed to load report.');
+
+        renderAdminReport(data.report);
+      } catch (err) {
+        console.error('Report error', err);
+        recentReportsContent.innerHTML = `<p class="report-empty">Failed to load report: ${reportValue(err.message)}</p>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+
+    function getReportFileName(report) {
+      const datePart = new Date(report.generatedAt).toISOString().slice(0, 10);
+      return `${report.type}-admin-report-${datePart}`;
+    }
+
+    function buildReportPrintHtml(report) {
+      return `
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${reportValue(report.title)} PDF</title>
+            <style>
+              @page { margin: 16mm; }
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                color: #111827;
+                font-family: Arial, sans-serif;
+                line-height: 1.45;
+              }
+              .report-output {
+                box-shadow: none;
+                padding: 0;
+              }
+              .report-output-header {
+                display: flex;
+                justify-content: space-between;
+                gap: 1rem;
+                border-bottom: 2px solid #0066cc;
+                padding-bottom: 1rem;
+                margin-bottom: 1.5rem;
+              }
+              .report-output-header h3 {
+                margin: 0 0 0.35rem 0;
+                font-size: 1.35rem;
+              }
+              .report-output-header p {
+                margin: 0;
+                color: #4b5563;
+                font-size: 0.9rem;
+              }
+              .report-actions { display: none; }
+              .report-kpi-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.8rem;
+                margin-bottom: 1.25rem;
+              }
+              .report-kpi {
+                border: 1px solid #d8e2ef;
+                border-left: 4px solid #0066cc;
+                border-radius: 8px;
+                padding: 0.85rem;
+                background: #f8fbff;
+                break-inside: avoid;
+              }
+              .report-kpi span {
+                display: block;
+                color: #334155;
+                font-size: 0.72rem;
+                font-weight: 700;
+                margin-bottom: 0.45rem;
+                text-transform: uppercase;
+              }
+              .report-kpi strong {
+                display: block;
+                font-size: 1.5rem;
+              }
+              .report-section-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 1rem;
+              }
+              .report-panel {
+                border: 1px solid #d8e2ef;
+                border-radius: 8px;
+                overflow: hidden;
+                break-inside: avoid;
+                background: #fff;
+              }
+              .report-panel h4 {
+                margin: 0;
+                padding: 0.8rem;
+                background: #f0f4f8;
+                border-bottom: 1px solid #d8e2ef;
+                font-size: 0.95rem;
+              }
+              .report-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.78rem;
+              }
+              .report-table th,
+              .report-table td {
+                padding: 0.55rem;
+                border-bottom: 1px solid #e5e7eb;
+                text-align: left;
+                vertical-align: top;
+              }
+              .report-table th {
+                color: #475569;
+                font-size: 0.68rem;
+                text-transform: uppercase;
+                background: #fafafa;
+              }
+              .report-empty {
+                color: #64748b;
+                padding: 1rem;
+                text-align: center;
+              }
+              @media print {
+                body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+              }
+            </style>
+          </head>
+          <body>
+            <main class="report-output">
+              <div class="report-output-header">
+                <div>
+                  <h3>${reportValue(report.title)}</h3>
+                  <p>Generated ${new Date(report.generatedAt).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p>${reportValue(getReportFileName(report))}</p>
+                </div>
+              </div>
+              ${buildReportDetails(report)}
+            </main>
+          </body>
+        </html>
+      `;
+    }
+
+    function downloadCurrentReportPdf() {
+      if (!window.currentAdminReport) return;
+
+      const printWindow = window.open('', '_blank', 'width=1100,height=800');
+      if (!printWindow) {
+        alert('Please allow pop-ups to download the report as PDF.');
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write(buildReportPrintHtml(window.currentAdminReport));
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 300);
+    }
+
+    reportButtons.forEach(button => {
+      button.addEventListener('click', () => loadAdminReport(button.dataset.reportType, button));
     });
 
     async function viewUser(userId) {
