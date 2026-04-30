@@ -142,10 +142,15 @@
   </main>
 
   <script>
+    function getRegistrationUrl() {
+      return new URL('register.html', window.location.href).href;
+    }
+
     async function loadRegistrationQr() {
       const qrImage = document.getElementById('registrationQr');
       const qrStatus = document.getElementById('qrStatus');
       const registrationLink = document.getElementById('registrationLink');
+      registrationLink.href = getRegistrationUrl();
 
       try {
         const resp = await fetch('/api/public-registration-qr');
@@ -155,7 +160,6 @@
         qrImage.src = data.qrDataUrl;
         qrImage.hidden = false;
         qrStatus.hidden = true;
-        registrationLink.href = data.registrationUrl;
       } catch (err) {
         qrStatus.textContent = 'QR unavailable. Use the registration link below.';
         console.error('QR load error', err);
