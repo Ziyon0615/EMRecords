@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const outDir = path.join(root, 'dist');
+const outDir = path.resolve(root, '..', 'VercelFrontend');
 const staticFiles = [
   'admin-dashboard.html',
   'admin.html',
@@ -30,5 +30,19 @@ fs.mkdirSync(outDir, { recursive: true });
 for (const file of staticFiles) {
   fs.copyFileSync(path.join(root, file), path.join(outDir, file));
 }
+
+fs.writeFileSync(
+  path.join(outDir, 'vercel.json'),
+  `${JSON.stringify({
+    cleanUrls: true,
+    rewrites: [{ source: '/', destination: '/index.html' }],
+    headers: [
+      {
+        source: '/(.*)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
+      },
+    ],
+  }, null, 2)}\n`
+);
 
 console.log(`Copied ${staticFiles.length} static files to ${outDir}`);

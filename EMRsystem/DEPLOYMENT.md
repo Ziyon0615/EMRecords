@@ -64,14 +64,14 @@ with your real Render URL.
 4. Set the root directory to:
 
 ```text
-EMRsystem
+VercelFrontend
 ```
 
 5. Set:
 
 ```text
-Build Command: npm run build
-Output Directory: dist
+Build Command: leave blank
+Output Directory: leave blank
 ```
 
 6. Deploy.
