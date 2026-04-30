@@ -24,7 +24,7 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST.neon.tech/DBNAME?sslmode=require
 2. Set the root directory to:
 
 ```text
-ProfElect2-master
+EMRsystem
 ```
 
 3. Use:
@@ -46,7 +46,7 @@ ROBOFLOW_API_KEY=your_key_if_you_use_ocr_detection
 5. Deploy and copy the Render URL, for example:
 
 ```text
-https://profelect2-api.onrender.com
+https://emrsystem-api.onrender.com
 ```
 
 ## 3. Vercel Frontend
@@ -64,7 +64,7 @@ with your real Render URL.
 4. Set the root directory to:
 
 ```text
-ProfElect2-master
+EMRsystem
 ```
 
 5. Deploy.

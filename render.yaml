@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: profelect2-api
+    name: emrsystem-api
     env: node
     plan: free
-    rootDir: ProfElect2-master
+    rootDir: EMRsystem
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
