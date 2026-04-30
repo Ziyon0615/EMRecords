@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Health Assessment | EMR Access</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="api-config.js"></script>
 </head>
 <body>
   <main class="container">
@@ -33,9 +34,7 @@
   </main>
 
   <script>
-    const API_BASE_URL = window.location.origin.startsWith('http')
-      ? window.location.origin
-      : 'http://localhost:3000';
+    const API_BASE_URL = window.PROFELECT_API_BASE_URL;
     const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
     const assessmentForm = document.getElementById('assessmentForm');
     const assessmentQuestions = document.getElementById('assessmentQuestions');

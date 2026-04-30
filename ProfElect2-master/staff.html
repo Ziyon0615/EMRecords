@@ -313,6 +313,7 @@
       }
     }
   </style>
+  <script src="api-config.js"></script>
 </head>
 <body>
   <main class="staff-shell">
@@ -399,9 +400,7 @@
   </main>
 
   <script>
-    const API_BASE_URL = window.location.origin && window.location.origin.startsWith('http')
-      ? window.location.origin
-      : 'http://localhost:3000';
+    const API_BASE_URL = window.PROFELECT_API_BASE_URL;
     const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
 
     const staffMeta = document.getElementById('staffMeta');

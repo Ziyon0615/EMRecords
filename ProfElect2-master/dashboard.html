@@ -604,6 +604,7 @@
       background: rgba(255, 255, 255, 0.9) !important;
     }
   </style>
+  <script src="api-config.js"></script>
 </head>
 <body>
   <aside class="sidebar">
@@ -793,7 +794,7 @@
   </main>
 
   <script>
-    const API_BASE_URL = 'http://localhost:3000';
+    const API_BASE_URL = window.PROFELECT_API_BASE_URL;
     const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
 
     const overviewState = {

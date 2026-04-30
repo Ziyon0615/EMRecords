@@ -506,6 +506,7 @@
       background: rgba(255, 255, 255, 0.5);
     }
   </style>
+  <script src="api-config.js"></script>
 </head>
 <body>
   <!-- Sidebar Navigation -->
@@ -730,7 +731,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <script>
-    const API_BASE_URL = 'http://localhost:3000';
+    const API_BASE_URL = window.PROFELECT_API_BASE_URL;
     const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
 
     if (!authUser || !authUser.id || authUser.role !== 'doctor') {

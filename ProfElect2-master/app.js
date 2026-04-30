@@ -50,7 +50,7 @@ function validateForm() {
   return true;
 }
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = window.PROFELECT_API_BASE_URL;
 
 async function apiCall(path, body) {
   const resp = await fetch(`${API_BASE_URL}${path}`, {
@@ -95,13 +95,13 @@ async function handleSubmit(event) {
     localStorage.setItem('authUser', JSON.stringify(result.user));
 
     if (result.user.role === 'staff') {
-      window.location.href = 'http://localhost:3000/staff.html';
+      window.location.href = 'staff.html';
     } else if (result.user.role === 'doctor') {
-      window.location.href = 'http://localhost:3000/doctor-dashboard.html';
+      window.location.href = 'doctor-dashboard.html';
     } else if (result.user.role === 'patient') {
-      window.location.href = 'http://localhost:3000/dashboard.html';
+      window.location.href = 'dashboard.html';
     } else if (result.user.role === 'admin') {
-      window.location.href = 'http://localhost:3000/admin-dashboard.html';
+      window.location.href = 'admin-dashboard.html';
     }
   } catch (err) {
     console.error('[AUTH ERROR]', err);

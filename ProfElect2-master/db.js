@@ -1,10 +1,13 @@
-const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-const dbPath = path.join(__dirname, 'data', 'emr.db');
-const db = new sqlite3.Database(dbPath);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
+    ? { rejectUnauthorized: false }
+    : false,
+});
 
 // CP-ABE Encryption Configuration
 const MASTER_KEY = crypto.randomBytes(32); // In production, this should be securely stored
@@ -83,37 +86,51 @@ function checkPolicy(policy, userAttributes) {
   return false; // Admin blocked or policy not satisfied
 }
 
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve(this);
-    });
-  });
+function toPostgresQuery(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
 }
 
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
+async function run(sql, params = []) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required. Set it to your Neon Postgres connection string.');
+  }
+
+  let query = toPostgresQuery(sql);
+  if (/^\s*insert\s+/i.test(query) && !/\breturning\b/i.test(query)) {
+    query = query.replace(/;?\s*$/, ' RETURNING id');
+  }
+
+  const result = await pool.query(query, params);
+  return {
+    lastID: result.rows[0]?.id,
+    changes: result.rowCount,
+    rows: result.rows,
+  };
 }
 
-function getAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows);
-    });
-  });
+async function get(sql, params = []) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required. Set it to your Neon Postgres connection string.');
+  }
+
+  const result = await pool.query(toPostgresQuery(sql), params);
+  return result.rows[0];
+}
+
+async function getAll(sql, params = []) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required. Set it to your Neon Postgres connection string.');
+  }
+
+  const result = await pool.query(toPostgresQuery(sql), params);
+  return result.rows;
 }
 
 async function init() {
   await run(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       role TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
@@ -123,18 +140,11 @@ async function init() {
     )
   `);
 
-  // Ensure legacy databases have a status column for user accounts
-  try {
-    await run(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active';`);
-  } catch (err) {
-    if (!/duplicate column|already exists/i.test(err.message)) {
-      throw err;
-    }
-  }
+  await run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS invites (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       token TEXT NOT NULL UNIQUE,
       expires_at TEXT NOT NULL,
       used INTEGER NOT NULL DEFAULT 0,
@@ -146,7 +156,7 @@ async function init() {
 
 await run(`
     CREATE TABLE IF NOT EXISTS patients (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE,
       patient_id TEXT NOT NULL UNIQUE,
       username TEXT NOT NULL UNIQUE,
@@ -171,26 +181,12 @@ await run(`
     )
   `);
 
-  // Migration: Add disability column if missing
-  try {
-    await run(`ALTER TABLE patients ADD COLUMN disability TEXT;`);
-  } catch (e) {
-    // Column exists
-  }
-
-  // Ensure legacy databases get the id_type column if it was missing
-  try {
-    await run(`ALTER TABLE patients ADD COLUMN id_type TEXT;`);
-  } catch (err) {
-    // SQLite will error if column already exists; ignore it.
-    if (!/duplicate column|already exists/i.test(err.message)) {
-      throw err;
-    }
-  }
+  await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS disability TEXT;`);
+  await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS id_type TEXT;`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS patient_assessments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
       assessment_json TEXT NOT NULL,
       assessment_encrypted TEXT,
@@ -200,21 +196,12 @@ await run(`
     )
   `);
 
-  // Migration: Add CP-ABE columns if they don't exist
-  try {
-    await run(`ALTER TABLE patient_assessments ADD COLUMN assessment_encrypted TEXT;`);
-  } catch (e) {
-    // Column likely already exists
-  }
-  try {
-    await run(`ALTER TABLE patient_assessments ADD COLUMN policy TEXT NOT NULL DEFAULT 'role:doctor OR userId:{userId}';`);
-  } catch (e) {
-    // Column likely already exists
-  }
+  await run(`ALTER TABLE patient_assessments ADD COLUMN IF NOT EXISTS assessment_encrypted TEXT;`);
+  await run(`ALTER TABLE patient_assessments ADD COLUMN IF NOT EXISTS policy TEXT NOT NULL DEFAULT 'role:doctor OR userId:{userId}';`);
 
 await run(`
     CREATE TABLE IF NOT EXISTS consultations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       doctor_id INTEGER,
       status TEXT NOT NULL DEFAULT 'pending',
@@ -231,23 +218,12 @@ await run(`
     )
   `);
 
-  // Migration: Add is_late column if missing
-  try {
-    await run(`ALTER TABLE consultations ADD COLUMN is_late INTEGER DEFAULT 0;`);
-  } catch (e) {
-    // Column exists
-  }
-
-  // Migration: Add consultation_time_end column if it doesn't exist
-  try {
-    await run(`ALTER TABLE consultations ADD COLUMN consultation_time_end TEXT;`);
-  } catch (e) {
-    // Column likely already exists
-  }
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS is_late INTEGER DEFAULT 0;`);
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS consultation_time_end TEXT;`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS doctor_availability (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       doctor_id INTEGER NOT NULL,
       available_date TEXT NOT NULL,
       available_time_slots TEXT NOT NULL, -- JSON array of time slots
@@ -258,7 +234,7 @@ await run(`
 
   await run(`
     CREATE TABLE IF NOT EXISTS doctor_profiles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE,
       license_number TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -269,7 +245,7 @@ await run(`
 
   await run(`
     CREATE TABLE IF NOT EXISTS staff_profiles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE,
       position TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -280,7 +256,7 @@ await run(`
 
 await run(`
     CREATE TABLE IF NOT EXISTS notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
       type TEXT NOT NULL,
       message TEXT NOT NULL,
@@ -292,7 +268,7 @@ await run(`
 
   await run(`
     CREATE TABLE IF NOT EXISTS password_reset_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
       email TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
@@ -306,7 +282,7 @@ await run(`
 
   await run(`
     CREATE TABLE IF NOT EXISTS reschedule_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       consultation_id INTEGER NOT NULL,
       patient_id INTEGER NOT NULL,
       doctor_id INTEGER NOT NULL,
@@ -323,7 +299,7 @@ await run(`
 
   await run(`
     CREATE TABLE IF NOT EXISTS message_board (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       from_user_id INTEGER NOT NULL,
       to_user_id INTEGER NOT NULL,
       consultation_id INTEGER,
@@ -695,7 +671,7 @@ async function getAllUsers({ search, role, status } = {}) {
   }
 
   if (search) {
-    conditions.push(`(email LIKE ? OR display_name LIKE ? OR id = ?)`);
+    conditions.push(`(email ILIKE ? OR display_name ILIKE ? OR CAST(id AS TEXT) = ?)`);
     params.push(`%${search}%`, `%${search}%`, search);
   }
 
@@ -922,7 +898,7 @@ async function getAdminReportData() {
     SELECT
       CASE
         WHEN used = 1 THEN 'used'
-        WHEN datetime(expires_at) < datetime('now') THEN 'expired'
+        WHEN expires_at::timestamptz < now() THEN 'expired'
         ELSE 'active'
       END AS status,
       COUNT(*) AS count

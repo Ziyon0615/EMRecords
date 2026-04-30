@@ -12,6 +12,11 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+
+function getFrontendUrl(req) {
+  return FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+}
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -20,7 +25,7 @@ app.use(express.static(path.join(__dirname)));
 
 app.get('/api/public-registration-qr', async (req, res) => {
   try {
-    const registrationUrl = `${req.protocol}://${req.get('host')}/register.html`;
+    const registrationUrl = `${getFrontendUrl(req)}/register.html`;
     const qrDataUrl = await QRCode.toDataURL(registrationUrl, { width: 320, margin: 1 });
     return res.json({ success: true, registrationUrl, qrDataUrl });
   } catch (err) {
@@ -427,7 +432,7 @@ app.post('/api/admin/invite', async (req, res) => {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const invite = await db.createInvite({ token, expiresAt, createdBy: userId });
 
-    const inviteUrl = `${req.protocol}://${req.get('host')}/register.html?token=${encodeURIComponent(token)}`;
+    const inviteUrl = `${getFrontendUrl(req)}/register.html?token=${encodeURIComponent(token)}`;
     const qrDataUrl = await QRCode.toDataURL(inviteUrl);
 
     return res.status(201).json({
@@ -456,7 +461,7 @@ app.post('/api/staff/invite', async (req, res) => {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     await db.createInvite({ token, expiresAt, createdBy: userId });
 
-    const inviteUrl = `${req.protocol}://${req.get('host')}/register.html?token=${encodeURIComponent(token)}`;
+    const inviteUrl = `${getFrontendUrl(req)}/register.html?token=${encodeURIComponent(token)}`;
     const qrDataUrl = await QRCode.toDataURL(inviteUrl, { width: 300, margin: 1 });
 
     return res.status(201).json({
@@ -1006,7 +1011,7 @@ app.get('/api/admin/qr-codes', async (req, res) => {
     // Generate QR codes for each invite
     const qrCodesWithImages = await Promise.all(
       qrCodes.map(async (qr) => {
-        const inviteUrl = `http://localhost:3000/register.html?token=${qr.token}`;
+        const inviteUrl = `${getFrontendUrl(req)}/register.html?token=${encodeURIComponent(qr.token)}`;
         const qrDataUrl = await QRCode.toDataURL(inviteUrl, { width: 300, margin: 1 });
         return { ...qr, qrDataUrl };
       })

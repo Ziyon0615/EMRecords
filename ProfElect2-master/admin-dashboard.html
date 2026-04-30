@@ -1089,6 +1089,7 @@
       background: #999;
     }
   </style>
+  <script src="api-config.js"></script>
 </head>
 <body>
   <!-- Sidebar Navigation -->
@@ -1657,7 +1658,7 @@
   </main>
 
   <script>
-    const API_BASE_URL = 'http://localhost:3000';
+    const API_BASE_URL = window.PROFELECT_API_BASE_URL;
     const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
 
     if (!authUser || !authUser.id || authUser.role !== 'admin') {
@@ -2531,7 +2532,7 @@
                 body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
               }
             </style>
-          </head>
+</head>
           <body>
             <main class="report-output">
               <div class="report-output-header">
