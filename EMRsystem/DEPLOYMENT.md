@@ -67,14 +67,22 @@ with your real Render URL.
 EMRsystem
 ```
 
-5. Deploy.
-6. Go back to Render and set `FRONTEND_URL` to the final Vercel URL.
+5. Set:
+
+```text
+Build Command: npm run build
+Output Directory: dist
+```
+
+6. Deploy.
+7. Go back to Render and set `FRONTEND_URL` to the final Vercel URL.
 
 ## 4. Local Development
 
 Create `.env` from `.env.example`, then run:
 
-```bash
+```powershell
+cd C:\Users\Diony\Documents\ProfElect2-master\EMRsystem
 npm install
 npm start
 ```
