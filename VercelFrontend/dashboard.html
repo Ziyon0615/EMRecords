@@ -582,6 +582,61 @@
       color: var(--primary);
     }
 
+    .status-cancelled {
+      background: #f1f3f5;
+      color: #495057;
+    }
+
+    .status-no-show {
+      background: #ffe3e3;
+      color: #a61e4d;
+    }
+
+    .status-marked-no-show {
+      background: #ffe3e3;
+      color: #a61e4d;
+    }
+
+    .availability-calendar {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 1.25rem;
+    }
+
+    .calendar-day {
+      min-height: 74px;
+      border: 1px solid #dbe4ef;
+      border-radius: 8px;
+      padding: 0.6rem;
+      background: #fff;
+    }
+
+    .calendar-day.available {
+      border-left: 5px solid #22c55e;
+      background: #eafaf0;
+      cursor: pointer;
+    }
+
+    .calendar-day.past {
+      border-left: 5px solid #94a3b8;
+      background: #f1f5f9;
+      color: #64748b;
+    }
+
+    .calendar-day strong,
+    .calendar-day span {
+      display: block;
+    }
+
+    .calendar-legend {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
     .card {
       color: #1a202c;
     }
@@ -755,6 +810,16 @@
         <div class="card">
           <h2>Request Consultation</h2>
           <form id="consultationForm" class="form">
+            <div class="form-row">
+              <div class="field">
+                <label for="requestedDate">Preferred Consultation Date</label>
+                <input type="date" id="requestedDate" name="requestedDate" required />
+              </div>
+              <div class="field">
+                <label for="requestedTime">Preferred Time</label>
+                <input type="time" id="requestedTime" name="requestedTime" required />
+              </div>
+            </div>
             <div class="field">
               <label for="concerns">Describe Your Concerns</label>
               <textarea id="concerns" name="concerns" required rows="6" placeholder="Please describe your symptoms or health concerns in detail..."></textarea>
@@ -777,6 +842,11 @@
       <section id="availability" class="section">
         <div class="card">
           <h2>Doctor Availability</h2>
+          <div class="calendar-legend">
+            <span><strong style="color:#22c55e;">Green</strong> available date</span>
+            <span><strong style="color:#64748b;">Gray</strong> done / already past</span>
+          </div>
+          <div id="availabilityCalendar" class="availability-calendar"></div>
           <div id="availabilityList" class="card-list"></div>
         </div>
       </section>
@@ -818,6 +888,15 @@
     const logoutBtn = document.getElementById('logoutBtn');
     const logoutSidebarBtn = document.getElementById('logoutSidebarBtn');
     const headerNotificationsBtn = document.getElementById('headerNotificationsBtn');
+    const requestedDateInput = document.getElementById('requestedDate');
+    if (requestedDateInput) {
+      requestedDateInput.min = new Date().toISOString().slice(0, 10);
+      requestedDateInput.addEventListener('change', () => validateSelectedAvailability(true));
+    }
+    const requestedTimeInput = document.getElementById('requestedTime');
+    if (requestedTimeInput) {
+      requestedTimeInput.addEventListener('change', () => validateSelectedAvailability(true));
+    }
 
     function setNotificationBellActive(active) {
       if (!headerNotificationsBtn) return;
@@ -935,13 +1014,16 @@
     consultationForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const concerns = document.getElementById('concerns').value.trim();
+      const consultationDate = document.getElementById('requestedDate').value;
+      const consultationTime = document.getElementById('requestedTime').value;
       if (!concerns) return;
+      if (!validateSelectedAvailability(true)) return;
 
       try {
         const resp = await fetch(`${API_BASE_URL}/api/consultation-request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUser.id, concerns }),
+          body: JSON.stringify({ userId: authUser.id, concerns, consultationDate, consultationTime }),
         });
         const data = await resp.json();
         if (!data.success) throw new Error(data.message);
@@ -976,6 +1058,10 @@
               <div class="data-label">Status</div>
               <div><span class="status-badge status-${c.status}">${c.status.toUpperCase()}</span></div>
             </div>
+            ${Number(c.is_late) ? `<div class="data-row">
+              <div class="data-label">Alert</div>
+              <div class="data-value" style="color: var(--danger);">This pending consultation date has already passed.</div>
+            </div>` : ''}
             <div class="data-row">
               <div class="data-label">Concerns</div>
               <div class="data-value">${c.concerns}</div>
@@ -996,12 +1082,39 @@
               <div class="data-label">Submitted</div>
               <div class="data-value" style="font-size: 0.9rem;">${new Date(c.created_at).toLocaleString()}</div>
             </div>
+            ${canCancelConsultation(c) ? `<button class="primary" style="margin-top:0.75rem; background:#c92a2a;" onclick="cancelConsultation(${c.id})">Cancel Consultation</button>` : ''}
           </div>
         `).join('');
       } catch (err) {
         document.getElementById('consultationsList').innerHTML = `<p style="color: var(--danger);">Error loading consultations: ${err.message}</p>`;
       }
     }
+
+    function canCancelConsultation(c) {
+      const today = new Date().toISOString().slice(0, 10);
+      return ['pending', 'scheduled', 'under-review'].includes(c.status)
+        && c.consultation_date
+        && c.consultation_date > today;
+    }
+
+    async function cancelConsultation(consultationId) {
+      if (!confirm('Cancel this consultation request?')) return;
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/my-consultations/${consultationId}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUser.id }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        alert('Error cancelling consultation: ' + err.message);
+      }
+    }
+
+    window.cancelConsultation = cancelConsultation;
 
     function renderOverviewStats() {
       const consultations = overviewState.consultations || [];
@@ -1137,6 +1250,7 @@
         
         overviewState.availability = data.availability || [];
         renderOverviewDoctors();
+        renderAvailabilityCalendar(overviewState.availability);
         
         const list = document.getElementById('availabilityList');
         if (!data.availability || data.availability.length === 0) {
@@ -1144,25 +1258,116 @@
           return;
         }
         
-        list.innerHTML = data.availability.map(a => `
-          <div class="data-card">
+        const today = new Date().toISOString().slice(0, 10);
+        list.innerHTML = data.availability.map(a => {
+          const isPast = a.available_date < today;
+          return `
+          <div class="data-card" style="${isPast ? 'border-left-color:#94a3b8; opacity:0.72;' : 'border-left-color:#22c55e;'}">
             <div class="data-row">
               <div class="data-label">Doctor</div>
               <div class="data-value">${a.doctor_name}</div>
             </div>
             <div class="data-row">
               <div class="data-label">Date</div>
-              <div class="data-value">${a.available_date}</div>
+              <div class="data-value">${a.available_date} ${isPast ? '(Done / Past)' : '(Available)'}</div>
             </div>
             <div class="data-row">
               <div class="data-label">Available Slots</div>
               <div class="data-value">${JSON.parse(a.available_time_slots).join(', ')}</div>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       } catch (err) {
         document.getElementById('availabilityList').innerHTML = `<p style="color: var(--danger);">Error loading availability: ${err.message}</p>`;
       }
+    }
+
+    function getAvailabilityForSelection(date, time) {
+      const today = new Date().toISOString().slice(0, 10);
+      return (overviewState.availability || []).filter(item => {
+        if (item.available_date !== date || item.available_date < today) return false;
+        const slots = JSON.parse(item.available_time_slots || '[]');
+        return !time || slots.includes(time);
+      });
+    }
+
+    function validateSelectedAvailability(showMessage = false) {
+      const date = document.getElementById('requestedDate').value;
+      const time = document.getElementById('requestedTime').value;
+      if (!date) return true;
+
+      const matches = getAvailabilityForSelection(date, time);
+      if (matches.length > 0) {
+        consultationHint.textContent = '';
+        return true;
+      }
+
+      if (showMessage) {
+        consultationHint.textContent = 'No available doctor schedule for the date/time you selected. Please click a green available date in the Doctor Availability calendar.';
+        consultationHint.style.color = 'var(--danger)';
+      }
+      return false;
+    }
+
+    function selectAvailabilityDate(date, firstTime) {
+      document.getElementById('requestedDate').value = date;
+      if (firstTime) {
+        document.getElementById('requestedTime').value = firstTime;
+      }
+      consultationHint.textContent = `Selected available schedule: ${date}${firstTime ? ` at ${firstTime}` : ''}.`;
+      consultationHint.style.color = 'var(--success)';
+      switchSection('consultation');
+    }
+
+    window.selectAvailabilityDate = selectAvailabilityDate;
+
+    function renderAvailabilityCalendar(availability) {
+      const calendar = document.getElementById('availabilityCalendar');
+      if (!calendar) return;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const byDate = (availability || []).reduce((acc, item) => {
+        if (!acc[item.available_date]) acc[item.available_date] = [];
+        acc[item.available_date].push(item);
+        return acc;
+      }, {});
+
+      const visibleDates = Object.keys(byDate).sort();
+      const anchor = visibleDates.find(date => date >= today) || visibleDates[0] || today;
+      const monthStart = new Date(`${anchor.slice(0, 7)}-01T00:00:00`);
+      const firstDay = monthStart.getDay();
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      const cells = [];
+
+      for (let i = 0; i < firstDay; i += 1) {
+        cells.push('<div></div>');
+      }
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const entries = byDate[date] || [];
+        const isPast = date < today;
+        const className = entries.length ? (isPast ? 'calendar-day past' : 'calendar-day available') : 'calendar-day';
+        const label = entries.length
+          ? `${entries.length} doctor${entries.length > 1 ? 's' : ''}`
+          : '';
+        const firstSlots = entries.flatMap(entry => JSON.parse(entry.available_time_slots || '[]'));
+        const firstTime = firstSlots[0] || '';
+        const slots = firstSlots.slice(0, 2).join(', ');
+        const clickHandler = entries.length && !isPast
+          ? `onclick="selectAvailabilityDate('${date}', '${firstTime}')"`
+          : '';
+        cells.push(`
+          <div class="${className}" ${clickHandler} title="${entries.map(entry => `${entry.doctor_name}: ${JSON.parse(entry.available_time_slots || '[]').join(', ')}`).join('\n')}">
+            <strong>${day}</strong>
+            <span>${isPast && entries.length ? 'Done' : label}</span>
+            <small>${slots}</small>
+          </div>
+        `);
+      }
+
+      calendar.innerHTML = cells.join('');
     }
 
     async function markAllNotificationsRead(notifications = []) {

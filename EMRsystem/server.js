@@ -13,9 +13,44 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
 
 function getFrontendUrl(req) {
   return FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+function getLocalDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value;
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+}
+
+async function notifyOverduePendingConsultations(today = getLocalDateString()) {
+  const overdue = await db.getOverduePendingConsultations(today);
+  for (const consultation of overdue) {
+    const when = `${consultation.consultation_date}${consultation.consultation_time ? ` at ${consultation.consultation_time}` : ''}`;
+    await db.createNotification({
+      userId: consultation.patient_id,
+      type: 'consultation_missed_pending',
+      message: `Your pending consultation request for ${when} has passed. Please contact the clinic or request a new schedule.`,
+    });
+
+    if (consultation.doctor_id) {
+      await db.createNotification({
+        userId: consultation.doctor_id,
+        type: 'consultation_missed_pending',
+        message: `${consultation.patient_name || 'A patient'} did not attend the pending consultation request for ${when}. Please approve, reject, or follow up.`,
+      });
+    }
+
+    await db.markConsultationMissedNotified(consultation.id);
+  }
+  return overdue.length;
 }
 
 app.use(cors());
@@ -194,7 +229,7 @@ app.post('/api/assessment', async (req, res) => {
 
 app.post('/api/consultation-request', async (req, res) => {
   try {
-    const { userId, concerns } = req.body;
+    const { userId, concerns, consultationDate, consultationTime } = req.body;
     if (!userId || !concerns) {
       return res.status(400).json({ success: false, message: 'userId and concerns are required.' });
     }
@@ -209,11 +244,36 @@ app.post('/api/consultation-request', async (req, res) => {
       return res.status(500).json({ success: false, message: 'No doctor available.' });
     }
 
-    const consultation = await db.createConsultation({ patientId: userId, doctorId: doctor.id, concerns });
+    const today = getLocalDateString();
+    if (consultationDate && consultationDate < today) {
+      return res.status(400).json({ success: false, message: 'Consultation date cannot be in the past.' });
+    }
+
+    if (consultationDate) {
+      const availability = await db.getDoctorAvailability();
+      const hasAvailableDoctor = availability.some((slot) => {
+        if (slot.available_date !== consultationDate) return false;
+        if (slot.available_date < today) return false;
+        const slots = typeof slot.available_time_slots === 'string'
+          ? JSON.parse(slot.available_time_slots || '[]')
+          : (slot.available_time_slots || []);
+        return !consultationTime || slots.includes(consultationTime);
+      });
+
+      if (!hasAvailableDoctor) {
+        return res.status(400).json({
+          success: false,
+          message: 'There is no available doctor schedule for the date/time you selected. Please choose a green available date from the calendar.',
+        });
+      }
+    }
+
+    const consultation = await db.createConsultation({ patientId: userId, doctorId: doctor.id, concerns, consultationDate, consultationTime });
     // Create notification for patient
-    await db.createNotification({ userId, type: 'consultation_submitted', message: 'Your consultation request has been submitted and is under review.' });
+    await db.createNotification({ userId, type: 'consultation_submitted', message: 'Your consultation request has been submitted and is pending doctor approval.' });
     // Create notification for doctor
-    await db.createNotification({ userId: doctor.id, type: 'new_consultation', message: `New consultation request from ${user.display_name}.` });
+    const requestedFor = consultationDate ? ` for ${consultationDate}${consultationTime ? ` at ${consultationTime}` : ''}` : '';
+    await db.createNotification({ userId: doctor.id, type: 'new_consultation', message: `New consultation request from ${user.display_name}${requestedFor}.` });
     return res.status(201).json({ success: true, consultation });
   } catch (err) {
     console.error('consultation request error', err);
@@ -228,10 +288,59 @@ app.get('/api/my-consultations', async (req, res) => {
       return res.status(400).json({ success: false, message: 'userId is required.' });
     }
 
+    await notifyOverduePendingConsultations();
     const consultations = await db.getConsultationsByPatient(userId);
     return res.json({ success: true, consultations });
   } catch (err) {
     console.error('my consultations error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.post('/api/my-consultations/:id/cancel', async (req, res) => {
+  try {
+    const consultationId = req.params.id;
+    const { userId } = req.body;
+    if (!userId || !consultationId) {
+      return res.status(400).json({ success: false, message: 'userId and consultation ID are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'patient') {
+      return res.status(403).json({ success: false, message: 'Only patients can cancel consultations.' });
+    }
+
+    const consultation = await db.getConsultationById(consultationId);
+    if (!consultation || String(consultation.patient_id) !== String(userId)) {
+      return res.status(404).json({ success: false, message: 'Consultation not found.' });
+    }
+
+    if (!['pending', 'scheduled', 'under-review'].includes(String(consultation.status || '').toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Only active consultations can be cancelled.' });
+    }
+
+    const today = getLocalDateString();
+    if (consultation.consultation_date && consultation.consultation_date <= today) {
+      return res.status(400).json({ success: false, message: 'Consultations can only be cancelled before the consultation date.' });
+    }
+
+    await db.updateConsultation(consultationId, { status: 'cancelled' });
+    await db.createNotification({
+      userId,
+      type: 'consultation_cancelled',
+      message: 'Your consultation has been cancelled.',
+    });
+    if (consultation.doctor_id) {
+      await db.createNotification({
+        userId: consultation.doctor_id,
+        type: 'consultation_cancelled',
+        message: `${user.display_name || 'A patient'} cancelled a consultation scheduled for ${consultation.consultation_date || 'a pending date'}.`,
+      });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('cancel consultation error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
@@ -253,6 +362,7 @@ app.get('/api/notifications', async (req, res) => {
       return res.status(400).json({ success: false, message: 'userId is required.' });
     }
 
+    await notifyOverduePendingConsultations();
     const notifications = await db.getNotificationsByUser(userId);
     return res.json({ success: true, notifications });
   } catch (err) {
@@ -543,6 +653,58 @@ app.get('/api/staff/consultations', async (req, res) => {
     return res.json({ success: true, consultations });
   } catch (err) {
     console.error('staff consultations error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.put('/api/consultations/:id/schedule', async (req, res) => {
+  try {
+    const consultationId = req.params.id;
+    const { userId, consultationDate, consultationTime, consultationTimeEnd, notes, status } = req.body;
+
+    if (!userId || !consultationId || !consultationDate || !consultationTime) {
+      return res.status(400).json({ success: false, message: 'userId, consultation ID, date, and start time are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || !['doctor', 'staff'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Only doctors and staff can set consultation schedules.' });
+    }
+
+    const consultation = await db.getConsultationById(consultationId);
+    if (!consultation) {
+      return res.status(404).json({ success: false, message: 'Consultation not found.' });
+    }
+
+    const updates = {
+      consultation_date: consultationDate,
+      consultation_time: consultationTime,
+      status: status || 'scheduled',
+    };
+    if (consultationTimeEnd) updates.consultation_time_end = consultationTimeEnd;
+    if (notes) updates.notes = notes;
+    if (user.role === 'doctor') updates.doctor_id = user.id;
+
+    await db.updateConsultation(consultationId, updates);
+
+    const actor = user.role === 'doctor' ? 'doctor' : 'clinic staff';
+    await db.createNotification({
+      userId: consultation.patient_id,
+      type: 'consultation_scheduled',
+      message: `Your consultation schedule was set by ${actor} for ${consultationDate} at ${consultationTime}${consultationTimeEnd ? ` - ${consultationTimeEnd}` : ''}.`,
+    });
+
+    if (consultation.doctor_id && user.role === 'staff') {
+      await db.createNotification({
+        userId: consultation.doctor_id,
+        type: 'consultation_scheduled_by_staff',
+        message: `Clinic staff set a consultation schedule for ${consultation.first_name || 'a patient'} ${consultation.last_name || ''} on ${consultationDate} at ${consultationTime}.`,
+      });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('set consultation schedule error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
@@ -2964,6 +3126,7 @@ app.get('/api/doctor/consultations', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only doctors can access this endpoint.' });
     }
 
+    await notifyOverduePendingConsultations();
     const consultations = await db.getConsultationsByDoctor(user.id);
     return res.json({ success: true, consultations });
   } catch (err) {
@@ -3016,8 +3179,15 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only doctors can update consultations.' });
     }
 
+    const normalizedStatus = status === 'approved'
+      ? 'scheduled'
+      : status === 'rejected'
+        ? 'denied'
+        : ['no-show', 'no_show', 'marked-no-show'].includes(status)
+          ? 'marked-no-show'
+          : status;
     const updates = {};
-    if (status) updates.status = status;
+    if (normalizedStatus) updates.status = normalizedStatus;
     if (consultationDate) updates.consultation_date = consultationDate;
     if (consultationTime) updates.consultation_time = consultationTime;
     if (consultationTimeEnd) updates.consultation_time_end = consultationTimeEnd;
@@ -3029,12 +3199,16 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
     // Create notification for patient
     const consultation = await db.getConsultationById(consultationId);
     if (consultation) {
-      const notificationMsg = status === 'scheduled' ? 
-        `Your consultation is scheduled for ${consultationDate} at ${consultationTime}` :
-        `Your consultation request status has been updated to: ${status}`;
+      const notificationMsg = normalizedStatus === 'scheduled' ?
+        `Your consultation request has been approved for ${consultation.consultation_date || consultationDate} at ${consultation.consultation_time || consultationTime || 'the selected time'}.` :
+        normalizedStatus === 'denied' ?
+          'Your consultation request has been rejected. Please contact the clinic if you need another schedule.' :
+          normalizedStatus === 'marked-no-show' ?
+            `You were marked as no-show for your consultation scheduled on ${consultation.consultation_date || consultationDate || 'the consultation date'}${consultation.consultation_time || consultationTime ? ` at ${consultation.consultation_time || consultationTime}` : ''}. Please contact the clinic if you need to request another consultation.` :
+            `Your consultation request status has been updated to: ${normalizedStatus}`;
       await db.createNotification({
         userId: consultation.patient_id,
-        type: `consultation_${status}`,
+        type: `consultation_${normalizedStatus}`,
         message: notificationMsg
       });
     }
@@ -3046,9 +3220,39 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
   }
 });
 
+async function handleDoctorDiagnosticsReport(req, res) {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'doctor') {
+      return res.status(403).json({ success: false, message: 'Only doctors can view diagnostic reports.' });
+    }
+
+    const report = await db.getDiagnosticReportData(user.id);
+    return res.json({
+      success: true,
+      report: {
+        type: 'diagnostics',
+        title: 'Diagnostic Report',
+        ...report,
+      },
+    });
+  } catch (err) {
+    console.error('doctor diagnostics report error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+app.get('/api/doctor/reports/diagnostics', handleDoctorDiagnosticsReport);
+app.get('/api/doctor/report.diagnostics', handleDoctorDiagnosticsReport);
+
 app.post('/api/doctor/availability', async (req, res) => {
   try {
-    const { userId, availableDate, timeSlots } = req.body;
+    const { userId, availableDate, timeSlots, repeatMode, repeatCount } = req.body;
 
     if (!userId || !availableDate || !timeSlots || !Array.isArray(timeSlots)) {
       return res.status(400).json({ success: false, message: 'userId, availableDate, and timeSlots are required.' });
@@ -3059,13 +3263,73 @@ app.post('/api/doctor/availability', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only doctors can set availability.' });
     }
 
-    const availability = await db.setDoctorAvailability({ doctorId: userId, availableDate, timeSlots });
+    const count = Math.min(Math.max(parseInt(repeatCount || 1, 10) || 1, 1), 12);
+    const mode = ['weekly', 'monthly'].includes(repeatMode) ? repeatMode : 'none';
+    const startDate = new Date(`${availableDate}T00:00:00`);
+    const availability = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const nextDate = new Date(startDate);
+      if (mode === 'weekly') nextDate.setDate(startDate.getDate() + (index * 7));
+      if (mode === 'monthly') nextDate.setMonth(startDate.getMonth() + index);
+      const dateValue = nextDate.toISOString().slice(0, 10);
+      availability.push(await db.setDoctorAvailability({ doctorId: userId, availableDate: dateValue, timeSlots }));
+      if (mode === 'none') break;
+    }
+
     return res.status(201).json({ success: true, availability });
   } catch (err) {
     console.error('set availability error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
+
+async function handleUpdateDoctorAvailability(req, res) {
+  try {
+    const availabilityId = req.params.id;
+    const { userId, availableDate, timeSlots } = req.body;
+    if (!userId || !availabilityId || !availableDate || !Array.isArray(timeSlots) || timeSlots.length === 0) {
+      return res.status(400).json({ success: false, message: 'userId, availability ID, date, and time slots are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'doctor') {
+      return res.status(403).json({ success: false, message: 'Only doctors can edit availability.' });
+    }
+
+    await db.updateDoctorAvailability(availabilityId, { availableDate, timeSlots });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('edit availability error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+async function handleDeleteDoctorAvailability(req, res) {
+  try {
+    const availabilityId = req.params.id;
+    const userId = req.query.userId || req.body.userId;
+    if (!userId || !availabilityId) {
+      return res.status(400).json({ success: false, message: 'userId and availability ID are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'doctor') {
+      return res.status(403).json({ success: false, message: 'Only doctors can delete availability.' });
+    }
+
+    await db.deleteDoctorAvailability(availabilityId, userId);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('delete availability error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+}
+
+app.put('/api/doctor/availability/:id', handleUpdateDoctorAvailability);
+app.post('/api/doctor/availability/:id/update', handleUpdateDoctorAvailability);
+app.delete('/api/doctor/availability/:id', handleDeleteDoctorAvailability);
+app.post('/api/doctor/availability/:id/delete', handleDeleteDoctorAvailability);
 
 app.get('/api/doctor/my-availability', async (req, res) => {
   try {

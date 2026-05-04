@@ -110,25 +110,43 @@
 
     .tabs {
       display: flex;
+      flex-direction: column;
       gap: 8px;
-      flex-wrap: wrap;
-      margin: 18px 0 12px;
+      margin: 0;
+    }
+
+    .staff-content {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .staff-side-nav {
+      position: sticky;
+      top: 16px;
+      background: #1f4b7a;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
     }
 
     .tab {
-      border: 1px solid var(--line);
-      background: #fff;
-      color: #0f172a;
+      border: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.82);
       border-radius: 8px;
-      padding: 10px 14px;
+      padding: 12px 14px;
       cursor: pointer;
       font-weight: 700;
+      text-align: left;
     }
 
     .tab.active {
-      background: var(--blue);
+      background: rgba(255, 255, 255, 0.2);
       color: #fff;
-      border-color: var(--blue);
+      border-left: 4px solid var(--yellow);
     }
 
     .panel {
@@ -244,6 +262,22 @@
       overflow-wrap: anywhere;
     }
 
+    .schedule-form {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .schedule-form input {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
+
     .notice {
       background: var(--danger-soft);
       border: 1px solid #fecaca;
@@ -349,54 +383,58 @@
       </article>
     </section>
 
-    <nav class="tabs" aria-label="Staff sections">
-      <button class="tab active" type="button" data-view="schedules">Patient Schedules</button>
-      <button class="tab" type="button" data-view="consultations">View Consultations</button>
-      <button class="tab" type="button" data-view="invite">Patient Invite</button>
-    </nav>
+    <div class="staff-content">
+      <nav class="tabs staff-side-nav" aria-label="Staff sections">
+        <button class="tab active" type="button" data-view="schedules">Set Schedule</button>
+        <button class="tab" type="button" data-view="consultations">View Consultations</button>
+        <button class="tab" type="button" data-view="invite">Patient Invite</button>
+      </nav>
 
-    <section id="schedulesView" class="panel" aria-label="Patient schedules">
-      <div class="panel-head">
-        <h2>Patient Schedules</h2>
-        <p class="muted">Yellow means pending or rescheduled. Green means finished.</p>
-      </div>
-      <div id="scheduleList" class="queue-list"></div>
-    </section>
-
-    <section id="consultationsView" class="panel hidden" aria-label="Consultations">
-      <div class="panel-head">
-        <h2>Consultations</h2>
-        <p class="muted">Senior citizens and PWD patients are shown first.</p>
-      </div>
-      <div id="consultationList" class="queue-list"></div>
-    </section>
-
-    <section id="inviteView" class="panel hidden" aria-label="Patient invite">
-      <div class="panel-head">
-        <h2>Patient Registration Invite</h2>
-        <button id="generateInvite" class="btn" type="button">Generate QR</button>
-      </div>
-
-      <div id="inviteSection" class="hidden">
-        <div class="invite-grid">
-          <div>
-            <label for="inviteLink"><strong>Invite Link</strong></label>
-            <input id="inviteLink" class="input-like" type="text" readonly />
-            <br /><br />
-            <label for="expiresAt"><strong>Expires At</strong></label>
-            <input id="expiresAt" class="input-like" type="text" readonly />
+      <div class="staff-panels">
+        <section id="schedulesView" class="panel" aria-label="Patient schedules">
+          <div class="panel-head">
+            <h2>Set Patient Consultation Schedule</h2>
+            <p class="muted">Use the date and time fields on each card to set or update schedules.</p>
           </div>
-          <div class="qr-box">
-            <img id="qrImage" alt="Patient invite QR code" style="max-width: 220px;" />
-          </div>
-        </div>
-        <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
-          <button id="closeQr" class="btn secondary" type="button">Close QR</button>
-        </div>
-      </div>
+          <div id="scheduleList" class="queue-list"></div>
+        </section>
 
-      <div id="inviteEmpty" class="empty-state">Generate a QR code when a patient needs a registration link.</div>
-    </section>
+        <section id="consultationsView" class="panel hidden" aria-label="Consultations">
+          <div class="panel-head">
+            <h2>Consultations</h2>
+            <p class="muted">Senior citizens and PWD patients are shown first.</p>
+          </div>
+          <div id="consultationList" class="queue-list"></div>
+        </section>
+
+        <section id="inviteView" class="panel hidden" aria-label="Patient invite">
+          <div class="panel-head">
+            <h2>Patient Registration Invite</h2>
+            <button id="generateInvite" class="btn" type="button">Generate QR</button>
+          </div>
+
+          <div id="inviteSection" class="hidden">
+            <div class="invite-grid">
+              <div>
+                <label for="inviteLink"><strong>Invite Link</strong></label>
+                <input id="inviteLink" class="input-like" type="text" readonly />
+                <br /><br />
+                <label for="expiresAt"><strong>Expires At</strong></label>
+                <input id="expiresAt" class="input-like" type="text" readonly />
+              </div>
+              <div class="qr-box">
+                <img id="qrImage" alt="Patient invite QR code" style="max-width: 220px;" />
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+              <button id="closeQr" class="btn secondary" type="button">Close QR</button>
+            </div>
+          </div>
+
+          <div id="inviteEmpty" class="empty-state">Generate a QR code when a patient needs a registration link.</div>
+        </section>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -532,6 +570,12 @@
               <strong>${escapeHtml(item.notes || 'No notes yet')}</strong>
             </div>
           </div>
+          <form class="schedule-form" onsubmit="submitStaffSchedule(event, ${Number(item.id)})">
+            <input type="date" name="consultationDate" value="${escapeHtml(item.consultation_date || '')}" required aria-label="Consultation date" />
+            <input type="time" name="consultationTime" value="${escapeHtml(item.consultation_time || '')}" required aria-label="Start time" />
+            <input type="time" name="consultationTimeEnd" value="${escapeHtml(item.consultation_time_end || '')}" aria-label="End time" />
+            <button class="btn" type="submit">Set Schedule</button>
+          </form>
         </article>
       `;
     }
@@ -573,6 +617,32 @@
         setMessage(`Could not load staff dashboard: ${err.message}`);
       }
     }
+
+    async function submitStaffSchedule(event, consultationId) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+
+      try {
+        setMessage('');
+        await apiRequest(`/api/consultations/${encodeURIComponent(consultationId)}/schedule`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: authUser.id,
+            consultationDate: formData.get('consultationDate'),
+            consultationTime: formData.get('consultationTime'),
+            consultationTimeEnd: formData.get('consultationTimeEnd'),
+          }),
+        });
+        setMessage('Consultation schedule updated and patient notified.', 'success');
+        await loadDashboard();
+      } catch (err) {
+        setMessage(`Could not update schedule: ${err.message}`);
+      }
+    }
+
+    window.submitStaffSchedule = submitStaffSchedule;
 
     function switchView(viewName) {
       document.querySelectorAll('.tab').forEach((tab) => {

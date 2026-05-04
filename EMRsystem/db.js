@@ -211,6 +211,7 @@ await run(`
       concerns TEXT NOT NULL,
       notes TEXT,
       is_late INTEGER DEFAULT 0,
+      missed_notified_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (patient_id) REFERENCES users(id),
@@ -220,6 +221,7 @@ await run(`
 
   await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS is_late INTEGER DEFAULT 0;`);
   await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS consultation_time_end TEXT;`);
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS missed_notified_at TEXT;`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS doctor_availability (
@@ -474,19 +476,43 @@ async function createPatientProfile({
   };
 }
 
-async function createConsultation({ patientId, doctorId, concerns }) {
+async function createConsultation({ patientId, doctorId, concerns, consultationDate, consultationTime }) {
   const createdAt = new Date().toISOString();
   const updatedAt = createdAt;
   const result = await run(
-    `INSERT INTO consultations (patient_id, doctor_id, status, concerns, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [patientId, doctorId, 'pending', concerns, createdAt, updatedAt]
+    `INSERT INTO consultations (patient_id, doctor_id, status, consultation_date, consultation_time, concerns, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [patientId, doctorId, 'pending', consultationDate || null, consultationTime || null, concerns, createdAt, updatedAt]
   );
-  return { id: result.lastID, patientId, doctorId, status: 'pending', concerns, createdAt, updatedAt };
+  return { id: result.lastID, patientId, doctorId, status: 'pending', consultationDate: consultationDate || null, consultationTime: consultationTime || null, concerns, createdAt, updatedAt };
 }
 
 async function getConsultationsByPatient(patientId) {
   const rows = await getAll(`SELECT c.*, u.display_name as doctor_name FROM consultations c LEFT JOIN users u ON c.doctor_id = u.id WHERE c.patient_id = ? ORDER BY c.created_at DESC`, [patientId]);
   return rows;
+}
+
+async function getOverduePendingConsultations(today) {
+  return getAll(
+    `SELECT c.*, pu.display_name AS patient_name, du.display_name AS doctor_name
+     FROM consultations c
+     LEFT JOIN users pu ON pu.id = c.patient_id
+     LEFT JOIN users du ON du.id = c.doctor_id
+     WHERE c.status = 'pending'
+       AND c.consultation_date IS NOT NULL
+       AND c.consultation_date != ''
+       AND c.consultation_date < ?
+       AND c.missed_notified_at IS NULL
+     ORDER BY c.consultation_date ASC`,
+    [today]
+  );
+}
+
+async function markConsultationMissedNotified(consultationId) {
+  const notifiedAt = new Date().toISOString();
+  return run(
+    `UPDATE consultations SET is_late = 1, missed_notified_at = ?, updated_at = ? WHERE id = ?`,
+    [notifiedAt, notifiedAt, consultationId]
+  );
 }
 
 async function getDoctorAvailability() {
@@ -616,6 +642,17 @@ async function setDoctorAvailability({ doctorId, availableDate, timeSlots }) {
     [doctorId, availableDate, JSON.stringify(timeSlots), createdAt]
   );
   return { id: result.lastID, doctorId, availableDate, timeSlots, createdAt };
+}
+
+async function updateDoctorAvailability(availabilityId, { availableDate, timeSlots }) {
+  return run(
+    `UPDATE doctor_availability SET available_date = ?, available_time_slots = ? WHERE id = ?`,
+    [availableDate, JSON.stringify(timeSlots), availabilityId]
+  );
+}
+
+async function deleteDoctorAvailability(availabilityId, doctorId) {
+  return run(`DELETE FROM doctor_availability WHERE id = ? AND doctor_id = ?`, [availabilityId, doctorId]);
 }
 
 async function getDoctorAvailabilityByDoctor(doctorId) {
@@ -967,6 +1004,65 @@ async function getAllEMRRecords() {
   return rows || [];
 }
 
+async function getDiagnosticReportData(doctorId) {
+  const assessments = await getAll(`
+    SELECT
+      pa.id,
+      pa.user_id,
+      pa.assessment_json,
+      pa.created_at,
+      p.first_name,
+      p.last_name,
+      p.age,
+      p.sex,
+      u.display_name AS patient_name
+    FROM patient_assessments pa
+    JOIN patients p ON pa.user_id = p.user_id
+    JOIN users u ON u.id = pa.user_id
+    ORDER BY pa.created_at DESC
+    LIMIT 50
+  `);
+
+  const consultationStatus = await getAll(
+    `SELECT status, COUNT(*) AS count
+     FROM consultations
+     WHERE doctor_id = ?
+     GROUP BY status
+     ORDER BY count DESC`,
+    [doctorId]
+  );
+
+  const totals = await get(
+    `SELECT
+       COUNT(*) AS total_consultations,
+       SUM(CASE WHEN status IN ('pending', 'scheduled', 'under-review') THEN 1 ELSE 0 END) AS active_consultations
+     FROM consultations
+     WHERE doctor_id = ?`,
+    [doctorId]
+  );
+
+  const dailyTrend = await getAll(
+    `SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count
+     FROM consultations
+     WHERE doctor_id = ?
+     GROUP BY substr(created_at, 1, 10)
+     ORDER BY day DESC
+     LIMIT 14`,
+    [doctorId]
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totals: {
+      totalConsultations: Number(totals?.total_consultations || 0),
+      activeConsultations: Number(totals?.active_consultations || 0),
+    },
+    consultationStatus: consultationStatus || [],
+    dailyTrend: (dailyTrend || []).reverse(),
+    assessments: assessments || [],
+  };
+}
+
 async function getAllConsultations() {
   const rows = await getAll(`
     SELECT 
@@ -1107,6 +1203,8 @@ module.exports = {
   getConsultationById,
   updateConsultation,
   setDoctorAvailability,
+  updateDoctorAvailability,
+  deleteDoctorAvailability,
   getDoctorAvailabilityByDoctor,
   getDoctorProfile,
   createDoctorProfile,
@@ -1125,7 +1223,10 @@ module.exports = {
   getAdminStats,
   getAdminReportData,
   getAllEMRRecords,
+  getDiagnosticReportData,
   getAllConsultations,
+  getOverduePendingConsultations,
+  markConsultationMissedNotified,
   getStaffConsultationQueue,
   getAllInvites,
   getDoctorAccessPermissions,

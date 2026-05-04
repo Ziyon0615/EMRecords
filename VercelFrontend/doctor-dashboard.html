@@ -248,6 +248,100 @@
       gap: 1rem;
     }
 
+    .analytics-card {
+      max-width: 340px;
+      padding: 1.75rem;
+    }
+
+    .analytics-card p {
+      color: #555;
+      line-height: 1.6;
+      margin: 0 0 1.5rem;
+    }
+
+    .report-card {
+      background: white;
+      border: 1px solid #e1e8f0;
+      border-radius: 8px;
+      padding: 1.75rem;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    .report-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .report-head h3 {
+      margin: 0 0 0.4rem;
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .metric-box {
+      border: 1px solid #dbe4ef;
+      border-left: 4px solid #0066cc;
+      border-radius: 8px;
+      padding: 1rem;
+      background: #f8fbff;
+    }
+
+    .metric-box span {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: #34495e;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-box strong {
+      font-size: 1.7rem;
+    }
+
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+
+    .report-table th,
+    .report-table td {
+      border-bottom: 1px solid #dbe4ef;
+      padding: 0.8rem;
+      text-align: left;
+    }
+
+    .report-table th {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      color: #34495e;
+      background: #f7f9fc;
+    }
+
+    .inline-schedule-form,
+    .schedule-grid-form {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    .inline-schedule-form input,
+    .schedule-grid-form input,
+    .schedule-grid-form textarea {
+      padding: 0.55rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font: inherit;
+    }
+
     .data-card {
       background: white;
       padding: 1.5rem;
@@ -323,6 +417,21 @@
     .status-denied {
       background: #f8d7da;
       color: #c92a2a;
+    }
+
+    .status-cancelled {
+      background: #f1f3f5;
+      color: #495057;
+    }
+
+    .status-no-show {
+      background: #ffe3e3;
+      color: #a61e4d;
+    }
+
+    .status-marked-no-show {
+      background: #ffe3e3;
+      color: #a61e4d;
     }
 
     .status-approved {
@@ -517,7 +626,9 @@
     <nav class="sidebar-nav">
       <button class="sidebar-nav-item active" data-target="consultations" data-filter="pending">Dashboard</button>
       <button class="sidebar-nav-item" data-target="availability">Availability</button>
+      <button class="sidebar-nav-item" data-target="schedule-management">Set Schedule</button>
       <button class="sidebar-nav-item" data-target="patient-records">Patient Records</button>
+      <button class="sidebar-nav-item" data-target="reports">Reports</button>
       <button class="sidebar-nav-item" data-target="notifications">Notifications</button>
       <button class="sidebar-nav-item" data-target="profile">Profile</button>
       <button class="sidebar-nav-item" data-target="settings">Settings</button>
@@ -552,6 +663,9 @@
         </button>
         <button class="tab-btn" data-filter="completed">
           <span style="color: #2ecc71;">✓</span> Completed
+        </button>
+        <button class="tab-btn" data-filter="marked-no-show">
+          <span style="color: #a61e4d;">!</span> No Show
         </button>
         <button class="tab-btn" data-filter="available">
           <span style="color: #2ecc71;">📅</span> Available Slots
@@ -594,6 +708,7 @@
                   <option value="under-review">Under Review</option>
                   <option value="scheduled">Scheduled</option>
                   <option value="completed">Completed</option>
+                  <option value="marked-no-show">Marked No-show</option>
                   <option value="denied">Denied</option>
                 </select>
               </div>
@@ -615,6 +730,9 @@
               <textarea id="doctorNotes" name="notes" rows="4" placeholder="Add notes, remarks, recommendations, and follow-up instructions..."></textarea>
             </div>
             <button type="submit" class="primary">Update Consultation</button>
+            <button type="button" id="approveConsultationBtn" class="primary" style="background:#1e7e34;">Approve Date</button>
+            <button type="button" id="noShowConsultationBtn" class="primary" style="background:#a61e4d;">Mark No-show</button>
+            <button type="button" id="rejectConsultationBtn" class="primary" style="background:#c92a2a;">Reject</button>
             <p id="updateHint"></p>
           </form>
         </div>
@@ -631,6 +749,18 @@
             <div class="field">
               <label for="availableDate">Available Date</label>
               <input type="date" id="availableDate" name="availableDate" required />
+            </div>
+            <div class="field">
+              <label for="repeatMode">Repeat</label>
+              <select id="repeatMode" name="repeatMode">
+                <option value="none">No repeat</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="repeatCount">How Many Dates</label>
+              <input type="number" id="repeatCount" name="repeatCount" min="1" max="12" value="1" />
             </div>
           </div>
           <div class="field">
@@ -679,6 +809,15 @@
       </div>
     </section>
 
+    <!-- Schedule Management Section -->
+    <section id="schedule-management" class="section">
+      <div class="card">
+        <h2>Set Patient Consultation Schedule</h2>
+        <p id="scheduleManagementDebug" style="color:#666; font-size:0.9rem; margin:0 0 0.75rem 0;">Loading consultations...</p>
+        <div id="scheduleManagementList" class="card-list"></div>
+      </div>
+    </section>
+
     <!-- Patient Records Section -->
     <section id="patient-records" class="section">
       <div class="card">
@@ -686,6 +825,23 @@
         <p style="color:#666;">Select a patient from the consultation list to view their record.</p>
         <p id="patientRecordsDebug" style="color:#666; font-size:0.9rem; margin:0 0 0.75rem 0;">Loading patients...</p>
         <div id="patientRecordsList" class="card-list"></div>
+      </div>
+    </section>
+
+    <!-- Reports Section -->
+    <section id="reports" class="section">
+      <div class="card">
+        <h2>Reports</h2>
+        <div class="data-card analytics-card">
+          <h3>Consultation Analytics</h3>
+          <p>View consultation statistics and trends</p>
+          <button type="button" id="viewAnalyticsBtn" class="primary">View Analytics</button>
+        </div>
+        <div id="analyticsPanel" style="display:none; margin-top:1.5rem;">
+          <h2>Recent Reports</h2>
+          <p id="diagnosticsDebug" style="color:#666; font-size:0.9rem; margin:0 0 0.75rem 0;">Loading diagnostic report...</p>
+          <div id="diagnosticsReport" class="card-list"></div>
+        </div>
       </div>
     </section>
 
@@ -765,6 +921,14 @@
       if (target === 'consultations' && filter) {
         setFilter(filter);
       }
+
+      if (target === 'reports') {
+        loadDiagnosticsReport();
+      }
+
+      if (target === 'schedule-management') {
+        renderScheduleManagement();
+      }
     }
 
     sidebarBtns.forEach(btn => {
@@ -842,6 +1006,9 @@
         consultationsData = data.consultations || [];
         document.getElementById('consultationsDebug').textContent = `Loaded ${consultationsData.length} consultations.`;
         renderConsultationsList();
+        if (document.getElementById('schedule-management')?.classList.contains('active')) {
+          renderScheduleManagement();
+        }
       } catch (err) {
         document.getElementById('consultationsList').innerHTML = `<p style="color: var(--danger);">Error loading consultations: ${err.message}</p>`;
       }
@@ -930,6 +1097,14 @@
               <div class="data-label">Status</div>
               <div><span class="status-badge status-${c.status}">${c.status.toUpperCase()}</span></div>
             </div>
+            ${Number(c.is_late) ? `<div class="data-row">
+              <div class="data-label">Alert</div>
+              <div class="data-value" style="color:#c92a2a;">Pending date has passed</div>
+            </div>` : ''}
+            ${c.consultation_date ? `<div class="data-row">
+              <div class="data-label">Requested Date</div>
+              <div class="data-value">${c.consultation_date}${c.consultation_time ? ` at ${c.consultation_time}` : ''}</div>
+            </div>` : ''}
             <div class="data-row">
               <div class="data-label">Concerns</div>
               <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.concerns.substring(0, 100)}${c.concerns.length > 100 ? '...' : ''}</div>
@@ -938,6 +1113,19 @@
               <div class="data-label">Submitted</div>
               <div class="data-value" style="font-size: 0.9rem;">${new Date(c.created_at).toLocaleString()}</div>
             </div>
+            ${c.status === 'pending' ? `<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
+              <button class="primary" style="background:#1e7e34; padding:0.45rem 0.75rem;" onclick="event.stopPropagation(); quickUpdateConsultation(${c.id}, 'scheduled')">Approve</button>
+              <button class="primary" style="background:#c92a2a; padding:0.45rem 0.75rem;" onclick="event.stopPropagation(); quickUpdateConsultation(${c.id}, 'denied')">Reject</button>
+            </div>` : ''}
+            ${canMarkNoShow(c) ? `<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
+              <button class="primary" style="background:#a61e4d; padding:0.45rem 0.75rem;" onclick="event.stopPropagation(); quickUpdateConsultation(${c.id}, 'marked-no-show')">Mark No-show</button>
+            </div>` : ''}
+            <form class="inline-schedule-form" onsubmit="event.stopPropagation(); submitDoctorSchedule(event, ${c.id})" style="margin-top:0.75rem;">
+              <input type="date" name="consultationDate" value="${c.consultation_date || ''}" required />
+              <input type="time" name="consultationTime" value="${c.consultation_time || ''}" required />
+              <input type="time" name="consultationTimeEnd" value="${c.consultation_time_end || ''}" />
+              <button class="primary" type="submit" style="padding:0.55rem 0.75rem;">Set Schedule</button>
+            </form>
           </div>
         `).join('');
 
@@ -1093,6 +1281,121 @@
 
     window.selectConsultation = selectConsultation;
 
+    function canMarkNoShow(c) {
+      const today = new Date().toISOString().slice(0, 10);
+      return ['pending', 'scheduled', 'under-review'].includes(c.status)
+        && c.consultation_date
+        && c.consultation_date <= today;
+    }
+
+    async function updateSelectedConsultation(statusOverride) {
+      if (!selectedConsultationId) return;
+
+      const updates = {
+        status: statusOverride || document.getElementById('updateStatus').value,
+        consultationDate: document.getElementById('consultationDate').value,
+        consultationTime: document.getElementById('consultationTimeStart').value,
+        consultationTimeEnd: document.getElementById('consultationTimeEnd').value,
+        notes: document.getElementById('doctorNotes').value,
+      };
+
+      const resp = await fetch(`${API_BASE_URL}/api/doctor/consultation/${selectedConsultationId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: authUser.id, ...updates }),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.message);
+    }
+
+    async function quickUpdateConsultation(consultationId, status) {
+      const consultation = consultationsData.find(c => Number(c.id) === Number(consultationId));
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/doctor/consultation/${consultationId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: authUser.id,
+            status,
+            consultationDate: consultation?.consultation_date || '',
+            consultationTime: consultation?.consultation_time || '',
+            consultationTimeEnd: consultation?.consultation_time_end || '',
+          }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        alert('Error updating consultation: ' + err.message);
+      }
+    }
+
+    window.quickUpdateConsultation = quickUpdateConsultation;
+
+    async function submitDoctorSchedule(event, consultationId) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/consultations/${consultationId}/schedule`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: authUser.id,
+            consultationDate: formData.get('consultationDate'),
+            consultationTime: formData.get('consultationTime'),
+            consultationTimeEnd: formData.get('consultationTimeEnd'),
+          }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        alert('Error setting schedule: ' + err.message);
+      }
+    }
+
+    window.submitDoctorSchedule = submitDoctorSchedule;
+
+    function renderScheduleManagement() {
+      const debug = document.getElementById('scheduleManagementDebug');
+      const list = document.getElementById('scheduleManagementList');
+      if (!debug || !list) return;
+
+      const active = (consultationsData || []).filter(c => !['completed', 'denied', 'cancelled', 'marked-no-show'].includes(c.status));
+      debug.textContent = `Showing ${active.length} active consultations.`;
+
+      if (!active.length) {
+        list.innerHTML = '<p style="color: var(--muted);">No active consultations available for scheduling.</p>';
+        return;
+      }
+
+      list.innerHTML = active.map(c => `
+        <div class="data-card">
+          <div class="data-row">
+            <div class="data-label">Patient</div>
+            <div class="data-value">${c.first_name} ${c.last_name}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Status</div>
+            <div><span class="status-badge status-${c.status}">${c.status.toUpperCase()}</span></div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Concern</div>
+            <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.concerns || '-'}</div>
+          </div>
+          <form class="schedule-grid-form" onsubmit="submitDoctorSchedule(event, ${c.id})">
+            <input type="date" name="consultationDate" value="${c.consultation_date || ''}" required />
+            <input type="time" name="consultationTime" value="${c.consultation_time || ''}" required />
+            <input type="time" name="consultationTimeEnd" value="${c.consultation_time_end || ''}" />
+            <button class="primary" type="submit">Set Schedule</button>
+          </form>
+        </div>
+      `).join('');
+    }
+
     document.getElementById('backButton').addEventListener('click', () => {
       selectedConsultationId = null;
       document.getElementById('consultationsList').style.display = 'block';
@@ -1104,27 +1407,55 @@
       event.preventDefault();
       if (!selectedConsultationId) return;
 
-      const updates = {
-        status: document.getElementById('updateStatus').value,
-        consultationDate: document.getElementById('consultationDate').value,
-        consultationTime: document.getElementById('consultationTimeStart').value,
-        consultationTimeEnd: document.getElementById('consultationTimeEnd').value,
-        notes: document.getElementById('doctorNotes').value,
-      };
-
       try {
-        const resp = await fetch(`${API_BASE_URL}/api/doctor/consultation/${selectedConsultationId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUser.id, ...updates }),
-        });
-        const data = await resp.json();
-        if (!data.success) throw new Error(data.message);
+        await updateSelectedConsultation();
         document.getElementById('updateHint').textContent = '✓ Consultation updated successfully.';
         document.getElementById('updateHint').style.color = 'var(--success)';
         loadConsultations();
       } catch (err) {
         document.getElementById('updateHint').textContent = `❌ ${err.message}`;
+        document.getElementById('updateHint').style.color = 'var(--danger)';
+      }
+    });
+
+    document.getElementById('approveConsultationBtn').addEventListener('click', async () => {
+      try {
+        await updateSelectedConsultation('scheduled');
+        document.getElementById('updateStatus').value = 'scheduled';
+        document.getElementById('updateHint').textContent = 'Consultation date approved.';
+        document.getElementById('updateHint').style.color = 'var(--success)';
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        document.getElementById('updateHint').textContent = err.message;
+        document.getElementById('updateHint').style.color = 'var(--danger)';
+      }
+    });
+
+    document.getElementById('rejectConsultationBtn').addEventListener('click', async () => {
+      try {
+        await updateSelectedConsultation('denied');
+        document.getElementById('updateStatus').value = 'denied';
+        document.getElementById('updateHint').textContent = 'Consultation request rejected.';
+        document.getElementById('updateHint').style.color = 'var(--success)';
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        document.getElementById('updateHint').textContent = err.message;
+        document.getElementById('updateHint').style.color = 'var(--danger)';
+      }
+    });
+
+    document.getElementById('noShowConsultationBtn').addEventListener('click', async () => {
+      try {
+        await updateSelectedConsultation('marked-no-show');
+        document.getElementById('updateStatus').value = 'marked-no-show';
+        document.getElementById('updateHint').textContent = 'Patient marked as no-show and notified.';
+        document.getElementById('updateHint').style.color = 'var(--success)';
+        await loadConsultations();
+        await loadNotifications();
+      } catch (err) {
+        document.getElementById('updateHint').textContent = err.message;
         document.getElementById('updateHint').style.color = 'var(--danger)';
       }
     });
@@ -1135,6 +1466,8 @@
       event.preventDefault();
 
       const availableDate = document.getElementById('availableDate').value;
+      const repeatMode = document.getElementById('repeatMode').value;
+      const repeatCount = document.getElementById('repeatCount').value;
       const timeSlots = Array.from(document.querySelectorAll('.time-check:checked')).map(cb => cb.value);
 
       if (!availableDate || timeSlots.length === 0) {
@@ -1146,7 +1479,7 @@
         const resp = await fetch(`${API_BASE_URL}/api/doctor/availability`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUser.id, availableDate, timeSlots }),
+          body: JSON.stringify({ userId: authUser.id, availableDate, timeSlots, repeatMode, repeatCount }),
         });
         const data = await resp.json();
         if (!data.success) throw new Error(data.message);
@@ -1175,23 +1508,73 @@
           return;
         }
 
-        list.innerHTML = availabilityData.map(a => `
+        list.innerHTML = availabilityData.map(a => {
+          const slots = JSON.parse(a.available_time_slots || '[]');
+          return `
           <div class="data-card">
-            <div class="data-row">
-              <div class="data-label">Date</div>
-              <div class="data-value">${a.available_date}</div>
-            </div>
-            <div class="data-row">
-              <div class="data-label">Time Slots</div>
+            <form class="schedule-grid-form" onsubmit="updateAvailability(event, ${a.id})">
+              <input type="date" name="availableDate" value="${a.available_date}" required />
+              <input type="text" name="timeSlots" value="${slots.join(', ')}" required title="Comma-separated time slots" />
+              <button class="primary" type="submit">Save</button>
+              <button class="primary" type="button" style="background:#c92a2a;" onclick="deleteAvailability(${a.id})">Delete</button>
+            </form>
+            <div class="data-row" style="margin-top:0.75rem;">
+              <div class="data-label">Slots</div>
               <div class="time-slots">
-                ${JSON.parse(a.available_time_slots).map(t => `<div class="time-slot">${t}</div>`).join('')}
+                ${slots.map(t => `<div class="time-slot">${t}</div>`).join('')}
               </div>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       } catch (err) {
         document.getElementById('currentAvailability').innerHTML = `<p style="color: var(--danger);">Error: ${err.message}</p>`;
       }
+    }
+
+    async function updateAvailability(event, availabilityId) {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      const timeSlots = String(formData.get('timeSlots') || '').split(',').map(slot => slot.trim()).filter(Boolean);
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/doctor/availability/${availabilityId}/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUser.id, availableDate: formData.get('availableDate'), timeSlots }),
+        });
+        const data = await readJsonResponse(resp);
+        if (!data.success) throw new Error(data.message);
+        await loadMyAvailability();
+      } catch (err) {
+        alert('Error updating availability: ' + err.message);
+      }
+    }
+
+    async function deleteAvailability(availabilityId) {
+      if (!confirm('Delete this availability date?')) return;
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/doctor/availability/${availabilityId}/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUser.id }),
+        });
+        const data = await readJsonResponse(resp);
+        if (!data.success) throw new Error(data.message);
+        await loadMyAvailability();
+      } catch (err) {
+        alert('Error deleting availability: ' + err.message);
+      }
+    }
+
+    window.updateAvailability = updateAvailability;
+    window.deleteAvailability = deleteAvailability;
+
+    async function readJsonResponse(resp) {
+      const contentType = resp.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('The server route is not available yet. Please redeploy/restart the backend, then try again.');
+      }
+      return resp.json();
     }
 
     // ============ NOTIFICATIONS ============
@@ -1218,6 +1601,129 @@
         document.getElementById('notificationsList').innerHTML = `<p style="color: var(--danger);">Error: ${err.message}</p>`;
       }
     }
+
+    // ============ REPORTS ============
+
+    function buildLocalAnalyticsReport() {
+      const consultations = consultationsData || [];
+      const byStatusMap = consultations.reduce((acc, item) => {
+        const status = item.status || 'unknown';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {});
+
+      const byDayMap = consultations.reduce((acc, item) => {
+        const day = String(item.created_at || item.consultation_date || '').slice(0, 10) || 'Unknown';
+        acc[day] = (acc[day] || 0) + 1;
+        return acc;
+      }, {});
+
+      return {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          totalConsultations: consultations.length,
+          activeConsultations: consultations.filter(item => ['pending', 'scheduled', 'under-review'].includes(item.status)).length,
+        },
+        consultationStatus: Object.entries(byStatusMap)
+          .map(([status, count]) => ({ status, count }))
+          .sort((a, b) => Number(b.count) - Number(a.count)),
+        dailyTrend: Object.entries(byDayMap)
+          .map(([day, count]) => ({ day, count }))
+          .sort((a, b) => String(a.day).localeCompare(String(b.day))),
+      };
+    }
+
+    function renderAnalyticsReport(report) {
+      const reportEl = document.getElementById('diagnosticsReport');
+      if (!reportEl) return;
+
+      const statuses = report.consultationStatus || [];
+      const trend = report.dailyTrend || [];
+      const totals = report.totals || {};
+
+      const statusRows = statuses.length ? statuses.map(s => `
+        <tr>
+          <td>${String(s.status || 'unknown')}</td>
+          <td>${s.count}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="2">No consultation status data yet.</td></tr>';
+
+      const trendRows = trend.length ? trend.map(row => `
+        <tr>
+          <td>${row.day}</td>
+          <td>${row.count}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="2">No daily trend data yet.</td></tr>';
+
+      reportEl.innerHTML = `
+        <div class="report-card">
+          <div class="report-head">
+            <div>
+              <h3>Consultation Analytics</h3>
+              <p style="margin:0; color:#34495e;">Generated ${new Date(report.generatedAt).toLocaleString()}</p>
+            </div>
+            <button type="button" class="primary" onclick="window.print()">Download PDF</button>
+          </div>
+          <div class="report-grid">
+            <div class="metric-box">
+              <span>Total Consultations</span>
+              <strong>${totals.totalConsultations || 0}</strong>
+            </div>
+            <div class="metric-box">
+              <span>Active Consultations</span>
+              <strong>${totals.activeConsultations || 0}</strong>
+            </div>
+            <div>
+              <h3>Consultations by Status</h3>
+              <table class="report-table">
+                <thead><tr><th>Status</th><th>Count</th></tr></thead>
+                <tbody>${statusRows}</tbody>
+              </table>
+            </div>
+            <div>
+              <h3>Daily Consultation Trend</h3>
+              <table class="report-table">
+                <thead><tr><th>Day</th><th>Count</th></tr></thead>
+                <tbody>${trendRows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadDiagnosticsReport() {
+      const debug = document.getElementById('diagnosticsDebug');
+      const reportEl = document.getElementById('diagnosticsReport');
+      if (!debug || !reportEl) return;
+
+      try {
+        if (!consultationsData.length) {
+          await loadConsultations();
+        }
+
+        const resp = await fetch(`${API_BASE_URL}/api/doctor/reports/diagnostics?userId=${authUser.id}`);
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('Analytics API is not available yet.');
+        }
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+
+        const report = data.report || {};
+        debug.textContent = '';
+        renderAnalyticsReport(report);
+      } catch (err) {
+        debug.textContent = '';
+        renderAnalyticsReport(buildLocalAnalyticsReport());
+      }
+    }
+
+    document.getElementById('viewAnalyticsBtn')?.addEventListener('click', () => {
+      const panel = document.getElementById('analyticsPanel');
+      if (panel) panel.style.display = 'block';
+      loadDiagnosticsReport();
+    });
 
     // ============ PATIENT RECORDS ============
 
