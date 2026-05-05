@@ -158,6 +158,40 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
+    .icon-btn {
+      position: relative;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s ease;
+    }
+
+    .icon-btn:hover,
+    .icon-btn.active {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .icon-btn .badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: #ff3b30;
+      color: white;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      min-width: 18px;
+      padding: 0.15rem 0.35rem;
+      line-height: 1;
+    }
+
     .search-box::placeholder {
       color: rgba(255, 255, 255, 0.6);
     }
@@ -342,6 +376,13 @@
       font: inherit;
     }
 
+    .consultation-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
     .data-card {
       background: white;
       padding: 1.5rem;
@@ -512,6 +553,18 @@
       color: #999;
     }
 
+    .secondary-action {
+      background: #1f2937 !important;
+      color: #ffffff !important;
+      border: 1px solid #111827 !important;
+      box-shadow: 0 4px 12px rgba(31, 41, 55, 0.2) !important;
+    }
+
+    .secondary-action:hover {
+      background: #111827 !important;
+      color: #ffffff !important;
+    }
+
     /* Responsive */
     @media (max-width: 1200px) {
       .doc-layout {
@@ -531,6 +584,16 @@
 
       .doc-sidebar {
         width: 100%;
+      }
+
+      .two-col,
+      .report-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .inline-schedule-form,
+      .schedule-grid-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .search-box {
@@ -599,6 +662,16 @@
       .search-box {
         display: none;
       }
+
+      .data-row {
+        grid-template-columns: 1fr;
+        gap: 0.35rem;
+      }
+
+      .inline-schedule-form,
+      .schedule-grid-form {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* Scrollbar */
@@ -631,7 +704,6 @@
       <button class="sidebar-nav-item" data-target="reports">Reports</button>
       <button class="sidebar-nav-item" data-target="notifications">Notifications</button>
       <button class="sidebar-nav-item" data-target="profile">Profile</button>
-      <button class="sidebar-nav-item" data-target="settings">Settings</button>
     </nav>
   </div>
 
@@ -648,6 +720,10 @@
       </div>
       <div class="header-actions">
         <input type="text" class="search-box" id="searchPatient" placeholder="Search patient..." />
+        <button type="button" id="headerNotificationsBtn" class="icon-btn" title="Notifications" aria-label="Notifications">
+          🔔
+          <span id="doctorNotifBadge" class="badge" style="display:none;">0</span>
+        </button>
         <button id="logoutBtn">Logout</button>
       </div>
     </div>
@@ -729,14 +805,21 @@
               <label for="doctorNotes">Doctor Notes & Recommendations</label>
               <textarea id="doctorNotes" name="notes" rows="4" placeholder="Add notes, remarks, recommendations, and follow-up instructions..."></textarea>
             </div>
-            <button type="submit" class="primary">Update Consultation</button>
-            <button type="button" id="approveConsultationBtn" class="primary" style="background:#1e7e34;">Approve Date</button>
-            <button type="button" id="noShowConsultationBtn" class="primary" style="background:#a61e4d;">Mark No-show</button>
-            <button type="button" id="rejectConsultationBtn" class="primary" style="background:#c92a2a;">Reject</button>
+            <div class="field">
+              <label for="diagnosticResult">Consultation / Diagnostic Result</label>
+              <textarea id="diagnosticResult" name="diagnosticResult" rows="4" placeholder="Type findings, diagnosis, lab interpretation, and final consultation result..."></textarea>
+            </div>
+            <div class="field">
+              <label for="prescription">Prescription</label>
+              <textarea id="prescription" name="prescription" rows="4" placeholder="Type medicine, dosage, frequency, duration, and instructions..."></textarea>
+            </div>
+            <div class="consultation-actions">
+              <button type="submit" class="primary">Update Consultation</button>
+            </div>
             <p id="updateHint"></p>
           </form>
         </div>
-        <button id="backButton" class="primary" style="margin-top: 1rem; background: rgba(100,100,100,0.2);">Back to List</button>
+        <button id="backButton" class="primary secondary-action" style="margin-top: 1rem;">Back to List</button>
       </div>
     </section>
 
@@ -872,14 +955,6 @@
       </div>
     </section>
 
-    <!-- Settings Section -->
-    <section id="settings" class="section">
-      <div class="card">
-        <h2>Settings</h2>
-        <p style="color:#666;">Settings will appear here.</p>
-      </div>
-    </section>
-
     <footer class="footer">
       <p>EMR Doctor Management System • Patient Care & Records</p>
     </footer>
@@ -899,6 +974,7 @@
       const sidebarBtns = document.querySelectorAll('.sidebar-nav-item');
       const sections = document.querySelectorAll('.section');
       const logoutBtn = document.getElementById('logoutBtn');
+      const headerNotificationsBtn = document.getElementById('headerNotificationsBtn');
       const searchInput = document.getElementById('searchPatient');
 
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -908,6 +984,71 @@
     let selectedConsultationId = null;
     let consultationsData = [];
     let availabilityData = [];
+
+    function setDoctorNotificationBadge(notifications = []) {
+      const badge = document.getElementById('doctorNotifBadge');
+      if (!badge) return;
+      const unread = notifications.filter(n => !n.read).length;
+      badge.textContent = unread;
+      badge.style.display = unread ? 'inline-flex' : 'none';
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '0 KB';
+      if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderPatientRecordFiles(files) {
+      if (!files || files.length === 0) {
+        return '<p style="color: var(--muted);">No uploaded record files yet.</p>';
+      }
+
+      return files.map(file => `
+        <div class="data-card">
+          <div class="data-row">
+            <div class="data-label">File</div>
+            <div class="data-value">${file.file_name}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Type / Size</div>
+            <div class="data-value">${file.mime_type} - ${formatFileSize(file.file_size)}</div>
+          </div>
+          ${file.notes ? `<div class="data-row">
+            <div class="data-label">Notes</div>
+            <div class="data-value">${file.notes}</div>
+          </div>` : ''}
+          <div class="data-row">
+            <div class="data-label">Uploaded</div>
+            <div class="data-value">${new Date(file.created_at).toLocaleString()}</div>
+          </div>
+          <button type="button" class="primary" onclick="openPatientRecordFile(${file.id})">View File</button>
+        </div>
+      `).join('');
+    }
+
+    async function loadPatientRecordFiles(patientUserId) {
+      const resp = await fetch(`${API_BASE_URL}/api/patient-record-files?userId=${authUser.id}&patientId=${patientUserId}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.message);
+      return data.files || [];
+    }
+
+    async function openPatientRecordFile(fileId) {
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/patient-record-files/${fileId}?userId=${authUser.id}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        const win = window.open('', '_blank');
+        if (!win) throw new Error('Please allow popups to view the file.');
+        win.document.write(`<iframe src="${data.file.dataUrl}" style="border:0;width:100%;height:100vh;"></iframe>`);
+      } catch (err) {
+        alert('Error opening file: ' + err.message);
+      }
+    }
+
+    window.openPatientRecordFile = openPatientRecordFile;
+
     function setFilter(filter) {
       currentFilter = filter;
       tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === filter));
@@ -995,6 +1136,11 @@
       window.location.href = 'login.html';
     });
 
+    headerNotificationsBtn?.addEventListener('click', () => {
+      switchSection('notifications');
+      loadNotifications();
+    });
+
     // ============ CONSULTATIONS ============
 
     async function loadConsultations() {
@@ -1080,7 +1226,7 @@
         }
         // Otherwise filter by status
         if (currentFilter === 'scheduled') {
-          return c.consultation_date === today || c.status === 'scheduled';
+          return c.status === 'scheduled' && c.consultation_date === today;
         }
         return c.status === currentFilter;
       });
@@ -1142,6 +1288,7 @@
 
         const c = data.consultation;
         const assessment = c.assessment || {};
+        const recordFiles = await loadPatientRecordFiles(c.patient_id);
 
         function formatAssessment(assessmentData) {
           if (!assessmentData || Object.keys(assessmentData).length === 0) {
@@ -1256,6 +1403,14 @@
               <div class="data-label">Scheduled</div>
               <div class="data-value">${c.consultation_date} at ${c.consultation_time}${c.consultation_time_end ? ` - ${c.consultation_time_end}` : ''}</div>
             </div>` : ''}
+            ${c.diagnostic_result ? `<div class="data-row">
+              <div class="data-label">Result</div>
+              <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.diagnostic_result}</div>
+            </div>` : ''}
+            ${c.prescription ? `<div class="data-row">
+              <div class="data-label">Prescription</div>
+              <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.prescription}</div>
+            </div>` : ''}
           </div>
         `;
 
@@ -1263,6 +1418,8 @@
           <div>
             <h3 style="margin-top: 0;">Health Assessment Summary</h3>
             ${formatAssessment(assessment)}
+            <h3 style="margin-top: 2rem;">Uploaded Medical Records</h3>
+            ${renderPatientRecordFiles(recordFiles)}
           </div>
         `;
 
@@ -1271,6 +1428,8 @@
         document.getElementById('consultationTimeStart').value = c.consultation_time || '';
         document.getElementById('consultationTimeEnd').value = c.consultation_time_end || '';
         document.getElementById('doctorNotes').value = c.notes || '';
+        document.getElementById('diagnosticResult').value = c.diagnostic_result || '';
+        document.getElementById('prescription').value = c.prescription || '';
 
         document.getElementById('consultationsList').style.display = 'none';
         document.getElementById('consultationDetail').style.display = 'block';
@@ -1297,6 +1456,8 @@
         consultationTime: document.getElementById('consultationTimeStart').value,
         consultationTimeEnd: document.getElementById('consultationTimeEnd').value,
         notes: document.getElementById('doctorNotes').value,
+        diagnosticResult: document.getElementById('diagnosticResult').value,
+        prescription: document.getElementById('prescription').value,
       };
 
       const resp = await fetch(`${API_BASE_URL}/api/doctor/consultation/${selectedConsultationId}`, {
@@ -1414,48 +1575,6 @@
         loadConsultations();
       } catch (err) {
         document.getElementById('updateHint').textContent = `❌ ${err.message}`;
-        document.getElementById('updateHint').style.color = 'var(--danger)';
-      }
-    });
-
-    document.getElementById('approveConsultationBtn').addEventListener('click', async () => {
-      try {
-        await updateSelectedConsultation('scheduled');
-        document.getElementById('updateStatus').value = 'scheduled';
-        document.getElementById('updateHint').textContent = 'Consultation date approved.';
-        document.getElementById('updateHint').style.color = 'var(--success)';
-        await loadConsultations();
-        await loadNotifications();
-      } catch (err) {
-        document.getElementById('updateHint').textContent = err.message;
-        document.getElementById('updateHint').style.color = 'var(--danger)';
-      }
-    });
-
-    document.getElementById('rejectConsultationBtn').addEventListener('click', async () => {
-      try {
-        await updateSelectedConsultation('denied');
-        document.getElementById('updateStatus').value = 'denied';
-        document.getElementById('updateHint').textContent = 'Consultation request rejected.';
-        document.getElementById('updateHint').style.color = 'var(--success)';
-        await loadConsultations();
-        await loadNotifications();
-      } catch (err) {
-        document.getElementById('updateHint').textContent = err.message;
-        document.getElementById('updateHint').style.color = 'var(--danger)';
-      }
-    });
-
-    document.getElementById('noShowConsultationBtn').addEventListener('click', async () => {
-      try {
-        await updateSelectedConsultation('marked-no-show');
-        document.getElementById('updateStatus').value = 'marked-no-show';
-        document.getElementById('updateHint').textContent = 'Patient marked as no-show and notified.';
-        document.getElementById('updateHint').style.color = 'var(--success)';
-        await loadConsultations();
-        await loadNotifications();
-      } catch (err) {
-        document.getElementById('updateHint').textContent = err.message;
         document.getElementById('updateHint').style.color = 'var(--danger)';
       }
     });
@@ -1584,6 +1703,8 @@
         const resp = await fetch(`${API_BASE_URL}/api/notifications?userId=${authUser.id}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message);
+
+        setDoctorNotificationBadge(data.notifications || []);
 
         const list = document.getElementById('notificationsList');
         if (!data.notifications || data.notifications.length === 0) {
@@ -1791,6 +1912,7 @@
         const patient = emrData.emr;
         const consultations = consData.consultations || [];
         const assessment = patient.assessment_json ? JSON.parse(patient.assessment_json) : {};
+        const recordFiles = await loadPatientRecordFiles(patientUserId);
 
         // Format assessment data
         function formatAssessment(assessmentData) {
@@ -1906,6 +2028,9 @@
             <h3 style="margin-top: 2rem;">Health Assessment Summary</h3>
             ${formatAssessment(assessment)}
 
+            <h3 style="margin-top: 2rem;">Uploaded Medical Records</h3>
+            ${renderPatientRecordFiles(recordFiles)}
+
             <h3 style="margin-top: 2rem;">Consultation History</h3>
             ${consultations.length === 0 ? 
               '<p style="color: var(--muted);">No consultations yet.</p>' :
@@ -1927,11 +2052,19 @@
                     <div class="data-label">Doctor Notes</div>
                     <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.notes}</div>
                   </div>` : ''}
+                  ${c.diagnostic_result ? `<div class="data-row">
+                    <div class="data-label">Result</div>
+                    <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.diagnostic_result}</div>
+                  </div>` : ''}
+                  ${c.prescription ? `<div class="data-row">
+                    <div class="data-label">Prescription</div>
+                    <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.prescription}</div>
+                  </div>` : ''}
                 </div>
               `).join('')
             }
 
-            <button id="backToPatientList" class="primary" style="margin-top: 2rem; background: rgba(100,100,100,0.2);">Back to Patient List</button>
+            <button id="backToPatientList" class="primary secondary-action" style="margin-top: 2rem;">Back to Patient List</button>
           </div>
         `;
 

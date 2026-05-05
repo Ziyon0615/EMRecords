@@ -210,6 +210,9 @@ await run(`
       consultation_time_end TEXT,
       concerns TEXT NOT NULL,
       notes TEXT,
+      diagnostic_result TEXT,
+      prescription TEXT,
+      result_updated_at TEXT,
       is_late INTEGER DEFAULT 0,
       missed_notified_at TEXT,
       created_at TEXT NOT NULL,
@@ -222,6 +225,9 @@ await run(`
   await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS is_late INTEGER DEFAULT 0;`);
   await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS consultation_time_end TEXT;`);
   await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS missed_notified_at TEXT;`);
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS diagnostic_result TEXT;`);
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS prescription TEXT;`);
+  await run(`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS result_updated_at TEXT;`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS doctor_availability (
@@ -313,6 +319,36 @@ await run(`
       FOREIGN KEY (consultation_id) REFERENCES consultations(id)
     )
   `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS patient_record_files (
+      id SERIAL PRIMARY KEY,
+      patient_id INTEGER NOT NULL,
+      uploaded_by INTEGER NOT NULL,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      file_data TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (patient_id) REFERENCES users(id),
+      FOREIGN KEY (uploaded_by) REFERENCES users(id)
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      user_role TEXT,
+      action TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'success',
+      details TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
 }
 
 async function createUser({ role, email, password, displayName }) {
@@ -342,6 +378,7 @@ async function getUserByEmail(email) {
 async function validateCredentials(email, password) {
   const user = await getUserByEmail(email);
   if (!user) return null;
+  if (user.status && user.status !== 'active') return null;
   const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) return null;
   return user;
@@ -720,6 +757,63 @@ async function getAllUsers({ search, role, status } = {}) {
   return rows;
 }
 
+async function createAuditLog({ userId, userRole, action, resource, status = 'success', details }) {
+  await ensureAuditLogsTable();
+  const createdAt = new Date().toISOString();
+  const result = await run(
+    `INSERT INTO audit_logs (user_id, user_role, action, resource, status, details, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId || null, userRole || null, action, resource, status, details || null, createdAt]
+  );
+  return { id: result.lastID, userId, userRole, action, resource, status, details, createdAt };
+}
+
+async function getAuditLogs({ role, action, date } = {}) {
+  await ensureAuditLogsTable();
+  const conditions = [];
+  const params = [];
+
+  if (role) {
+    conditions.push(`user_role = ?`);
+    params.push(role);
+  }
+  if (action) {
+    conditions.push(`action = ?`);
+    params.push(action);
+  }
+  if (date) {
+    conditions.push(`LEFT(created_at, 10) = ?`);
+    params.push(date);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  return getAll(
+    `SELECT al.*, u.display_name, u.email
+     FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     ${where}
+     ORDER BY al.created_at DESC
+     LIMIT 100`,
+    params
+  );
+}
+
+async function ensureAuditLogsTable() {
+  await run(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      user_role TEXT,
+      action TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'success',
+      details TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+}
+
 async function updateUserStatus(userId, status) {
   return run(`UPDATE users SET status = ? WHERE id = ?`, [status, userId]);
 }
@@ -752,6 +846,13 @@ async function updateUser(userId, { displayName, email, role }) {
 async function updateUserPassword(userId, password) {
   const passwordHash = await bcrypt.hash(password, 10);
   return run(`UPDATE users SET password_hash = ? WHERE id = ?`, [passwordHash, userId]);
+}
+
+async function updatePatientAssessmentRecord(recordId, assessment) {
+  return run(
+    `UPDATE patient_assessments SET assessment_json = ? WHERE id = ?`,
+    [JSON.stringify(assessment), recordId]
+  );
 }
 
 async function createPasswordResetRequest(userId, email) {
@@ -801,8 +902,10 @@ async function deleteUserCascade(userId) {
   await run(`DELETE FROM message_board WHERE from_user_id = ? OR to_user_id = ?`, [userId, userId]);
   await run(`DELETE FROM reschedule_requests WHERE patient_id = ? OR doctor_id = ?`, [userId, userId]);
   await run(`DELETE FROM notifications WHERE user_id = ?`, [userId]);
+  await run(`DELETE FROM audit_logs WHERE user_id = ?`, [userId]);
   await run(`DELETE FROM doctor_availability WHERE doctor_id = ?`, [userId]);
   await run(`DELETE FROM consultations WHERE patient_id = ? OR doctor_id = ?`, [userId, userId]);
+  await run(`DELETE FROM patient_record_files WHERE patient_id = ? OR uploaded_by = ?`, [userId, userId]);
   await run(`DELETE FROM patient_assessments WHERE user_id = ?`, [userId]);
   await run(`DELETE FROM patients WHERE user_id = ?`, [userId]);
   await run(`DELETE FROM doctor_profiles WHERE user_id = ?`, [userId]);
@@ -850,6 +953,41 @@ async function getPatientEMR(patientId) {
     [patientId]
   );
   return row;
+}
+
+async function createPatientRecordFile({ patientId, uploadedBy, fileName, mimeType, fileSize, fileData, notes }) {
+  const createdAt = new Date().toISOString();
+  const result = await run(
+    `INSERT INTO patient_record_files (patient_id, uploaded_by, file_name, mime_type, file_size, file_data, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [patientId, uploadedBy, fileName, mimeType, fileSize, fileData, notes || null, createdAt]
+  );
+
+  return {
+    id: result.lastID,
+    patient_id: patientId,
+    uploaded_by: uploadedBy,
+    file_name: fileName,
+    mime_type: mimeType,
+    file_size: fileSize,
+    notes: notes || null,
+    created_at: createdAt,
+  };
+}
+
+async function getPatientRecordFiles(patientId) {
+  return getAll(
+    `SELECT id, patient_id, uploaded_by, file_name, mime_type, file_size, notes, created_at
+     FROM patient_record_files
+     WHERE patient_id = ?
+     ORDER BY created_at DESC`,
+    [patientId]
+  );
+}
+
+async function getPatientRecordFileById(fileId) {
+  const row = await get(`SELECT * FROM patient_record_files WHERE id = ?`, [fileId]);
+  return row || null;
 }
 
 async function getAdminStats() {
@@ -1093,6 +1231,9 @@ async function getStaffConsultationQueue() {
       c.status,
       c.concerns,
       c.notes,
+      c.diagnostic_result,
+      c.prescription,
+      c.result_updated_at,
       c.consultation_date,
       c.consultation_time,
       c.consultation_time_end,
@@ -1166,15 +1307,36 @@ async function getAllInvites() {
 
 async function getDoctorAccessPermissions() {
   const rows = await getAll(`
-    SELECT 
+    SELECT
       u.id,
       u.display_name,
       u.role,
-      'Patient EMR' as resource_type,
-      'READ/WRITE' as permission_level,
+      CASE
+        WHEN u.role = 'admin' THEN 'System administration'
+        WHEN u.role = 'doctor' THEN 'Patient consultations and EMRs'
+        WHEN u.role = 'staff' THEN 'Clinic schedules and patient invites'
+        WHEN u.role = 'patient' THEN 'Own profile, consultations, and records'
+        ELSE 'Limited system access'
+      END as resource_type,
+      CASE
+        WHEN u.role = 'admin' THEN 'MANAGE USERS / MONITOR SYSTEM'
+        WHEN u.role = 'doctor' THEN 'READ EMR / UPDATE CONSULTATIONS'
+        WHEN u.role = 'staff' THEN 'SCHEDULE / INVITE'
+        WHEN u.role = 'patient' THEN 'READ OWN / UPLOAD OWN'
+        ELSE 'READ'
+      END as permission_level,
       u.created_at as assigned_date
     FROM users u
-    WHERE u.role = 'doctor'
+    WHERE u.role IN ('admin', 'doctor', 'staff', 'patient')
+    ORDER BY
+      CASE u.role
+        WHEN 'admin' THEN 1
+        WHEN 'doctor' THEN 2
+        WHEN 'staff' THEN 3
+        WHEN 'patient' THEN 4
+        ELSE 5
+      END,
+      u.created_at DESC
   `);
   return rows || [];
 }
@@ -1213,6 +1375,9 @@ module.exports = {
   updateUserStatus,
   updateUser,
   updateUserPassword,
+  updatePatientAssessmentRecord,
+  createAuditLog,
+  getAuditLogs,
   createPasswordResetRequest,
   getPasswordResetRequests,
   resolvePasswordResetRequest,
@@ -1220,6 +1385,9 @@ module.exports = {
   updateDoctorProfile,
   getAllPatientsWithConsultations,
   getPatientEMR,
+  createPatientRecordFile,
+  getPatientRecordFiles,
+  getPatientRecordFileById,
   getAdminStats,
   getAdminReportData,
   getAllEMRRecords,

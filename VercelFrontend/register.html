@@ -6,6 +6,7 @@
   <title>Patient Registration | EMR Access</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="api-config.js"></script>
+  <script src="password-toggle.js" defer></script>
 </head>
 <body>
   <main class="container">
@@ -29,12 +30,12 @@
 
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" required minlength="6" />
+          <input type="password" id="password" name="password" required minlength="6" data-password-toggle />
         </div>
 
         <div class="field">
           <label for="confirmPassword">Confirm Password</label>
-          <input type="password" id="confirmPassword" name="confirmPassword" required minlength="6" />
+          <input type="password" id="confirmPassword" name="confirmPassword" required minlength="6" data-password-toggle />
         </div>
 
         <!-- ID Scanning Section -->

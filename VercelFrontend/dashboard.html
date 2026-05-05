@@ -871,6 +871,7 @@
       consultations: [],
       notifications: [],
       availability: [],
+      recordFiles: [],
     };
 
     if (!authUser || !authUser.id || authUser.role !== 'patient') {
@@ -1078,6 +1079,14 @@
               <div class="data-label">Doctor Notes</div>
               <div class="data-value">${c.notes}</div>
             </div>` : ''}
+            ${c.diagnostic_result ? `<div class="data-row">
+              <div class="data-label">Result</div>
+              <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.diagnostic_result}</div>
+            </div>` : ''}
+            ${c.prescription ? `<div class="data-row">
+              <div class="data-label">Prescription</div>
+              <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.prescription}</div>
+            </div>` : ''}
             <div class="data-row">
               <div class="data-label">Submitted</div>
               <div class="data-value" style="font-size: 0.9rem;">${new Date(c.created_at).toLocaleString()}</div>
@@ -1126,7 +1135,7 @@
       document.getElementById('upcomingCount').textContent = upcoming.length;
       document.getElementById('pendingCount').textContent = pending.length;
       document.getElementById('completedCount').textContent = completed.length;
-      document.getElementById('recordsCount').textContent = 1;
+      document.getElementById('recordsCount').textContent = 1 + (overviewState.recordFiles || []).length;
 
       const next = upcoming.sort((a, b) => (a.consultation_date + (a.consultation_time || '')).localeCompare(b.consultation_date + (b.consultation_time || '')))[0];
       document.getElementById('upcomingNext').textContent = next ? `Next: ${next.consultation_date} ${next.consultation_time || ''}` : 'Next: none';
@@ -1188,6 +1197,14 @@
             <div class="data-label">Notes</div>
             <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.notes || '—'}</div>
           </div>
+          ${c.diagnostic_result ? `<div class="data-row">
+            <div class="data-label">Result</div>
+            <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.diagnostic_result}</div>
+          </div>` : ''}
+          ${c.prescription ? `<div class="data-row">
+            <div class="data-label">Prescription</div>
+            <div class="data-value" style="white-space: pre-wrap; word-break: break-word;">${c.prescription}</div>
+          </div>` : ''}
         </div>
       `).join('');
     }
@@ -1482,11 +1499,19 @@
 
     async function loadEMR() {
       try {
-        const resp = await fetch(`${API_BASE_URL}/api/my-emr?userId=${authUser.id}`);
-        const data = await resp.json();
+        const [emrResp, filesResp] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/my-emr?userId=${authUser.id}`),
+          fetch(`${API_BASE_URL}/api/patient-record-files?userId=${authUser.id}`),
+        ]);
+        const data = await emrResp.json();
         if (!data.success) throw new Error(data.message);
+        const filesData = await filesResp.json();
+        if (!filesData.success) throw new Error(filesData.message);
+
         const emr = data.emr;
         const assessment = emr.assessment || (emr.assessment_json ? JSON.parse(emr.assessment_json) : {});
+        overviewState.recordFiles = filesData.files || [];
+        renderOverviewStats();
 
         document.getElementById('emrContent').innerHTML = `
           <div class="data-card" style="margin-bottom: 1.5rem;">
@@ -1524,11 +1549,126 @@
             <h3 style="margin-top: 0;">Health Assessment Summary</h3>
             ${renderAssessmentSummary(assessment, Object.keys(assessment).length > 0)}
           </div>
+          <div class="data-card" style="margin-top: 1.5rem;">
+            <h3 style="margin-top: 0;">Uploaded Medical Records</h3>
+            <form id="recordUploadForm" class="form" style="margin-bottom: 1rem;">
+              <div class="field">
+                <label for="recordFile">Image or PDF file</label>
+                <input type="file" id="recordFile" accept="image/png,image/jpeg,image/webp,application/pdf" required />
+              </div>
+              <div class="field">
+                <label for="recordNotes">Notes</label>
+                <textarea id="recordNotes" rows="2" placeholder="Example: Lab result, prescription, discharge summary"></textarea>
+              </div>
+              <button type="submit" class="primary">Upload Record</button>
+              <p id="recordUploadHint" class="hint"></p>
+            </form>
+            <div id="recordFilesList">${renderRecordFiles(overviewState.recordFiles)}</div>
+          </div>
         `;
+        document.getElementById('recordUploadForm')?.addEventListener('submit', uploadRecordFile);
       } catch (err) {
         document.getElementById('emrContent').innerHTML = `<p style="color: var(--danger);">Error loading medical record: ${err.message}</p>`;
       }
     }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '0 KB';
+      if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderRecordFiles(files) {
+      if (!files || files.length === 0) {
+        return '<p style="color: var(--muted);">No uploaded record files yet.</p>';
+      }
+
+      return files.map(file => `
+        <div class="data-card" style="margin-bottom: 0.75rem;">
+          <div class="data-row">
+            <div class="data-label">File</div>
+            <div class="data-value">${file.file_name}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Type / Size</div>
+            <div class="data-value">${file.mime_type} · ${formatFileSize(file.file_size)}</div>
+          </div>
+          ${file.notes ? `<div class="data-row">
+            <div class="data-label">Notes</div>
+            <div class="data-value">${file.notes}</div>
+          </div>` : ''}
+          <div class="data-row">
+            <div class="data-label">Uploaded</div>
+            <div class="data-value">${new Date(file.created_at).toLocaleString()}</div>
+          </div>
+          <button type="button" class="primary" onclick="openRecordFile(${file.id})">View File</button>
+        </div>
+      `).join('');
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Could not read selected file.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadRecordFile(event) {
+      event.preventDefault();
+      const hint = document.getElementById('recordUploadHint');
+      const input = document.getElementById('recordFile');
+      const file = input?.files?.[0];
+      if (!file) return;
+
+      if (file.size > 5 * 1024 * 1024) {
+        hint.textContent = 'File must be 5 MB or smaller.';
+        hint.style.color = 'var(--danger)';
+        return;
+      }
+
+      try {
+        hint.textContent = 'Uploading...';
+        hint.style.color = 'var(--muted)';
+        const fileData = await readFileAsDataUrl(file);
+        const resp = await fetch(`${API_BASE_URL}/api/patient-record-files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: authUser.id,
+            fileName: file.name,
+            mimeType: file.type,
+            fileData,
+            notes: document.getElementById('recordNotes').value.trim(),
+          }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        hint.textContent = 'Record uploaded successfully.';
+        hint.style.color = 'var(--success)';
+        await loadEMR();
+        await loadNotifications();
+      } catch (err) {
+        hint.textContent = err.message;
+        hint.style.color = 'var(--danger)';
+      }
+    }
+
+    async function openRecordFile(fileId) {
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/patient-record-files/${fileId}?userId=${authUser.id}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message);
+        const win = window.open('', '_blank');
+        if (!win) throw new Error('Please allow popups to view the file.');
+        win.document.write(`<iframe src="${data.file.dataUrl}" style="border:0;width:100%;height:100vh;"></iframe>`);
+      } catch (err) {
+        alert('Error opening file: ' + err.message);
+      }
+    }
+
+    window.openRecordFile = openRecordFile;
 
     const handleLogout = () => {
       localStorage.removeItem('authUser');
@@ -1550,8 +1690,21 @@
         loadConsultations(),
         loadAvailability(),
         loadNotifications(),
+        loadRecordFileCount(),
       ]);
       renderOverviewStats();
+    }
+
+    async function loadRecordFileCount() {
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/patient-record-files?userId=${authUser.id}`);
+        const data = await resp.json();
+        if (data.success) {
+          overviewState.recordFiles = data.files || [];
+        }
+      } catch (err) {
+        console.error('Error loading record files:', err);
+      }
     }
 
     async function loadProfile() {

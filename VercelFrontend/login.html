@@ -127,6 +127,7 @@
     }
   </style>
   <script src="api-config.js"></script>
+  <script src="password-toggle.js" defer></script>
 </head>
 <body>
   <main class="login-container">
@@ -153,7 +154,7 @@
 
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" required minlength="6" placeholder="Password" />
+          <input type="password" id="password" name="password" required minlength="6" placeholder="Password" data-password-toggle />
         </div>
 
         <button type="submit" class="primary" style="width: 100%; margin-top: 1rem;">Login</button>

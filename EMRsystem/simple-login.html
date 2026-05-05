@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EMR Login | Simple</title>
+  <link rel="stylesheet" href="styles.css">
   <style>
     body { font-family: system-ui; max-width: 400px; margin: 4rem auto; padding: 2rem; background: #f8fafc; }
     .form { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -15,6 +16,7 @@
     .register a { color: #3b82f6; text-decoration: none; font-weight: 500; }
   </style>
   <script src="api-config.js"></script>
+  <script src="password-toggle.js" defer></script>
 </head>
 <body>
   <div class="form">
@@ -22,7 +24,7 @@
     
     <form id="loginForm">
       <input type="email" id="email" placeholder="Email" required>
-      <input type="password" id="password" placeholder="Password" required minlength="6">
+      <input type="password" id="password" placeholder="Password" required minlength="6" data-password-toggle>
       <button type="submit">Login</button>
       <div id="error" class="error" style="display: none;"></div>
     </form>

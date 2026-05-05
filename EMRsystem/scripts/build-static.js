@@ -14,6 +14,7 @@ const staticFiles = [
   'doctor-register.html',
   'index.html',
   'login.html',
+  'password-toggle.js',
   'qrcode.min.js',
   'register.html',
   'simple-login.html',

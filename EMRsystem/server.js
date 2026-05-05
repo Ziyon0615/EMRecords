@@ -14,6 +14,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
+const MAX_RECORD_FILE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_RECORD_FILE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 
 function getFrontendUrl(req) {
   return FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
@@ -51,6 +53,14 @@ async function notifyOverduePendingConsultations(today = getLocalDateString()) {
     await db.markConsultationMissedNotified(consultation.id);
   }
   return overdue.length;
+}
+
+async function writeAuditLog({ userId, userRole, action, resource, status = 'success', details }) {
+  try {
+    await db.createAuditLog({ userId, userRole, action, resource, status, details });
+  } catch (err) {
+    console.error('audit log error', err);
+  }
 }
 
 app.use(cors());
@@ -197,6 +207,13 @@ app.post('/api/register', async (req, res) => {
       });
     }
 
+    await writeAuditLog({
+      userId,
+      userRole: admin.role,
+      action: 'create',
+      resource: 'User Management',
+      details: `Created ${role} account ${email}.`,
+    });
     return res.status(201).json({ success: true, user, patientProfile, doctorProfile, staffProfile });
   } catch (err) {
     console.error('register error', err);
@@ -439,6 +456,137 @@ app.get('/api/my-emr', async (req, res) => {
   }
 });
 
+function normalizeRecordFilePayload(fileData) {
+  const raw = String(fileData || '');
+  const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+  return match ? { mimeType: match[1], base64: match[2] } : { mimeType: '', base64: raw };
+}
+
+async function canAccessPatientRecordFile(user, file) {
+  if (!user || !file) return false;
+  if (user.role === 'patient' && String(user.id) === String(file.patient_id)) return true;
+  if (user.role === 'doctor') return true;
+  return false;
+}
+
+app.get('/api/patient-record-files', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const patientId = req.query.patientId || userId;
+    if (!userId || !patientId) {
+      return res.status(400).json({ success: false, message: 'userId and patientId are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || !['patient', 'doctor'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Only patients and doctors can view record files.' });
+    }
+
+    if (user.role === 'patient' && String(user.id) !== String(patientId)) {
+      return res.status(403).json({ success: false, message: 'Patients can only view their own files.' });
+    }
+
+    const files = await db.getPatientRecordFiles(patientId);
+    return res.json({ success: true, files });
+  } catch (err) {
+    console.error('record files list error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.post('/api/patient-record-files', async (req, res) => {
+  try {
+    const { userId, fileName, mimeType, fileData, notes } = req.body;
+    if (!userId || !fileName || !fileData) {
+      return res.status(400).json({ success: false, message: 'userId, fileName, and fileData are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'patient') {
+      return res.status(403).json({ success: false, message: 'Only patients can upload their medical record files.' });
+    }
+
+    const normalized = normalizeRecordFilePayload(fileData);
+    const actualMimeType = mimeType || normalized.mimeType;
+    if (!ALLOWED_RECORD_FILE_TYPES.has(actualMimeType)) {
+      return res.status(400).json({ success: false, message: 'Only JPG, PNG, WEBP, and PDF files are allowed.' });
+    }
+
+    const buffer = Buffer.from(normalized.base64, 'base64');
+    if (!buffer.length || buffer.length > MAX_RECORD_FILE_BYTES) {
+      return res.status(400).json({ success: false, message: 'File must be 5 MB or smaller.' });
+    }
+
+    const file = await db.createPatientRecordFile({
+      patientId: user.id,
+      uploadedBy: user.id,
+      fileName: String(fileName).slice(0, 180),
+      mimeType: actualMimeType,
+      fileSize: buffer.length,
+      fileData: normalized.base64,
+      notes: notes ? String(notes).slice(0, 500) : '',
+    });
+
+    const doctors = await db.getAllUsers({ role: 'doctor', status: 'active' });
+    await Promise.all(
+      doctors.map((doctor) =>
+        db.createNotification({
+          userId: doctor.id,
+          type: 'patient_record_uploaded',
+          message: `${user.display_name || user.email || 'A patient'} uploaded a medical record file: ${file.file_name}.`,
+        })
+      )
+    );
+
+    await db.createNotification({
+      userId: user.id,
+      type: 'patient_record_uploaded',
+      message: `Your medical record file "${file.file_name}" was uploaded successfully.`,
+    });
+
+    return res.status(201).json({ success: true, file });
+  } catch (err) {
+    console.error('record file upload error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.get('/api/patient-record-files/:id', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    const file = await db.getPatientRecordFileById(req.params.id);
+    if (!file) {
+      return res.status(404).json({ success: false, message: 'File not found.' });
+    }
+
+    if (!(await canAccessPatientRecordFile(user, file))) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this file.' });
+    }
+
+    return res.json({
+      success: true,
+      file: {
+        id: file.id,
+        patient_id: file.patient_id,
+        file_name: file.file_name,
+        mime_type: file.mime_type,
+        file_size: file.file_size,
+        notes: file.notes,
+        created_at: file.created_at,
+        dataUrl: `data:${file.mime_type};base64,${file.file_data}`,
+      },
+    });
+  } catch (err) {
+    console.error('record file detail error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 app.get('/api/profile', async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -481,10 +629,37 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
+    const account = await db.getUserByEmail(email);
+    if (account && account.status && account.status !== 'active') {
+      await writeAuditLog({
+        userId: account.id,
+        userRole: account.role,
+        action: 'login',
+        resource: 'Authentication',
+        status: 'blocked',
+        details: 'Inactive account attempted to sign in.',
+      });
+      return res.status(403).json({ success: false, message: 'Your account is deactivated. Please contact the administrator.' });
+    }
+
     const user = await db.validateCredentials(email, password);
     if (!user) {
+      await writeAuditLog({
+        action: 'login',
+        resource: 'Authentication',
+        status: 'failed',
+        details: `Failed sign-in attempt for ${email}.`,
+      });
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
+
+    await writeAuditLog({
+      userId: user.id,
+      userRole: user.role,
+      action: 'login',
+      resource: 'Authentication',
+      details: `${user.email} signed in.`,
+    });
 
     // In a real system, issue a session or token here.
     return res.status(200).json({ success: true, user: { id: user.id, role: user.role, email: user.email, displayName: user.display_name } });
@@ -709,6 +884,50 @@ app.put('/api/consultations/:id/schedule', async (req, res) => {
   }
 });
 
+app.put('/api/staff/consultations/:id/prescription', async (req, res) => {
+  try {
+    const consultationId = req.params.id;
+    const { userId, prescription } = req.body;
+    if (!userId || !consultationId) {
+      return res.status(400).json({ success: false, message: 'userId and consultation ID are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'staff') {
+      return res.status(403).json({ success: false, message: 'Only staff can issue prescriptions from this screen.' });
+    }
+
+    const consultation = await db.getConsultationById(consultationId);
+    if (!consultation) {
+      return res.status(404).json({ success: false, message: 'Consultation not found.' });
+    }
+
+    await db.updateConsultation(consultationId, {
+      prescription: String(prescription || '').trim(),
+      result_updated_at: new Date().toISOString(),
+    });
+
+    await db.createNotification({
+      userId: consultation.patient_id,
+      type: 'prescription_issued',
+      message: 'A prescription has been issued for your consultation and is available in your patient portal.',
+    });
+
+    await writeAuditLog({
+      userId: user.id,
+      userRole: user.role,
+      action: 'update',
+      resource: 'Prescription',
+      details: `Issued prescription for consultation #${consultationId}.`,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('staff prescription error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const userId = parseInt(req.query.userId, 10);
@@ -790,6 +1009,13 @@ app.get('/api/admin/users', async (req, res) => {
     };
 
     const users = await db.getAllUsers(filters);
+    await writeAuditLog({
+      userId,
+      userRole: user.role,
+      action: 'access',
+      resource: 'Admin Users',
+      details: 'Viewed user management list.',
+    });
     return res.json({ success: true, users });
   } catch (err) {
     console.error('admin users error', err);
@@ -973,8 +1199,20 @@ app.delete('/api/admin/users/:id', async (req, res) => {
     if (!target) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
+    if (target.role === 'admin') {
+      return res.status(400).json({ success: false, message: 'Admin accounts cannot be deleted from this screen.' });
+    }
 
+    const targetEmail = target.email;
+    const targetRole = target.role;
     const result = await db.deleteUserCascade(targetUserId);
+    await writeAuditLog({
+      userId,
+      userRole: admin.role,
+      action: 'delete',
+      resource: 'User Management',
+      details: `Deleted ${targetRole} account ${targetEmail}.`,
+    });
     return res.json({ success: true, deleted: result.deleted });
   } catch (err) {
     console.error('admin delete user error', err);
@@ -1004,8 +1242,23 @@ app.patch('/api/admin/users/:id', async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least one of displayName, email, or role must be provided.' });
     }
 
+    const target = await db.getUserById(targetUserId);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+    if (target.role === 'admin') {
+      return res.status(400).json({ success: false, message: 'Admin accounts cannot be edited from this screen.' });
+    }
+
     await db.updateUser(targetUserId, { displayName, email, role });
     const updatedUser = await db.getUserById(targetUserId);
+    await writeAuditLog({
+      userId,
+      userRole: user.role,
+      action: 'update',
+      resource: 'User Management',
+      details: `Updated user #${targetUserId}.`,
+    });
     return res.json({ success: true, user: updatedUser });
   } catch (err) {
     console.error('admin user update error', err);
@@ -1036,8 +1289,23 @@ app.post('/api/admin/users/:id/status', async (req, res) => {
       return res.status(400).json({ success: false, message: `Status must be one of: ${allowed.join(', ')}` });
     }
 
+    const target = await db.getUserById(targetUserId);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+    if (target.role === 'admin') {
+      return res.status(400).json({ success: false, message: 'Admin accounts cannot be activated or deactivated from this screen.' });
+    }
+
     await db.updateUserStatus(targetUserId, status);
     const updatedUser = await db.getUserById(targetUserId);
+    await writeAuditLog({
+      userId,
+      userRole: user.role,
+      action: 'update',
+      resource: 'User Status',
+      details: `Set ${target.email} to ${status}.`,
+    });
     return res.json({ success: true, user: updatedUser });
   } catch (err) {
     console.error('admin user status update error', err);
@@ -1122,9 +1390,7 @@ app.get('/api/admin/emr-records', async (req, res) => {
     // CP-ABE: Mark that assessment data is encrypted for admins
     const processedRecords = records.map(record => {
       if (record.assessment_json) {
-        // Admins cannot decrypt - show that data exists but is not accessible
-        record.assessment = '[ENCRYPTED - Access Denied for Admin Role]';
-        record.assessment_json = null;
+        record.assessment_data = record.assessment_json;
       }
       return record;
     });
@@ -1132,6 +1398,37 @@ app.get('/api/admin/emr-records', async (req, res) => {
     return res.json({ success: true, records: processedRecords });
   } catch (err) {
     console.error('admin emr records error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.patch('/api/admin/emr-records/:id', async (req, res) => {
+  try {
+    const userId = parseInt(req.query.userId, 10);
+    const recordId = parseInt(req.params.id, 10);
+    const { assessment } = req.body;
+
+    if (!userId || !recordId || !assessment || typeof assessment !== 'object') {
+      return res.status(400).json({ success: false, message: 'userId, record ID, and assessment are required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admins may edit EMR record metadata.' });
+    }
+
+    await db.updatePatientAssessmentRecord(recordId, assessment);
+    await writeAuditLog({
+      userId,
+      userRole: user.role,
+      action: 'update',
+      resource: 'EMR Management',
+      details: `Updated EMR record #${recordId}.`,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('admin update emr record error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
@@ -1152,6 +1449,30 @@ app.get('/api/admin/consultations', async (req, res) => {
     return res.json({ success: true, consultations });
   } catch (err) {
     console.error('admin consultations error', err);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+app.get('/api/admin/audit-logs', async (req, res) => {
+  try {
+    const userId = parseInt(req.query.userId, 10);
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admins may view audit logs.' });
+    }
+
+    const logs = await db.getAuditLogs({
+      role: req.query.role,
+      action: req.query.action || 'login',
+      date: req.query.date,
+    });
+    return res.json({ success: true, logs });
+  } catch (err) {
+    console.error('admin audit logs error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
@@ -3168,7 +3489,7 @@ app.get('/api/doctor/consultation/:id', async (req, res) => {
 app.put('/api/doctor/consultation/:id', async (req, res) => {
   try {
     const consultationId = req.params.id;
-    const { userId, status, consultationDate, consultationTime, consultationTimeEnd, notes } = req.body;
+    const { userId, status, consultationDate, consultationTime, consultationTimeEnd, notes, diagnosticResult, prescription } = req.body;
 
     if (!userId || !consultationId) {
       return res.status(400).json({ success: false, message: 'userId and consultation ID are required.' });
@@ -3192,6 +3513,14 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
     if (consultationTime) updates.consultation_time = consultationTime;
     if (consultationTimeEnd) updates.consultation_time_end = consultationTimeEnd;
     if (notes) updates.notes = notes;
+    if (diagnosticResult !== undefined) {
+      updates.diagnostic_result = String(diagnosticResult || '').trim();
+      updates.result_updated_at = new Date().toISOString();
+    }
+    if (prescription !== undefined) {
+      updates.prescription = String(prescription || '').trim();
+      updates.result_updated_at = new Date().toISOString();
+    }
     updates.doctor_id = userId;
 
     await db.updateConsultation(consultationId, updates);
@@ -3211,6 +3540,14 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
         type: `consultation_${normalizedStatus}`,
         message: notificationMsg
       });
+
+      if (diagnosticResult !== undefined || prescription !== undefined) {
+        await db.createNotification({
+          userId: consultation.patient_id,
+          type: 'consultation_result',
+          message: 'Your consultation result has been updated and is now available in your patient portal.',
+        });
+      }
     }
 
     return res.json({ success: true });

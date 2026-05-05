@@ -1090,6 +1090,7 @@
     }
   </style>
   <script src="api-config.js"></script>
+  <script src="password-toggle.js" defer></script>
 </head>
 <body>
   <!-- Sidebar Navigation -->
@@ -1187,7 +1188,7 @@
                 </div>
                 <div class="filter-field">
                   <label>Password</label>
-                  <input id="addUserPassword" type="password" placeholder="Temporary password" required minlength="6" />
+                  <input id="addUserPassword" type="password" placeholder="Temporary password" required minlength="6" data-password-toggle />
                 </div>
                 <div class="filter-field">
                   <label>Display Name</label>
@@ -1309,7 +1310,7 @@
               </select>
             </div>
             <div class="filter-field">
-              <label>Date Range</label>
+              <label>Login Date</label>
               <input type="date" />
             </div>
           </div>
@@ -1336,15 +1337,6 @@
             <div class="filter-field">
               <label>Search Patient</label>
               <input type="text" placeholder="Patient name or ID..." />
-            </div>
-            <div class="filter-field">
-              <label>Record Type</label>
-              <select>
-                <option value="">All Types</option>
-                <option value="assessment">Assessment</option>
-                <option value="consultation">Consultation</option>
-                <option value="diagnosis">Diagnosis</option>
-              </select>
             </div>
           </div>
 
@@ -1459,6 +1451,35 @@
                   </label>
                 </div>
               </div>
+
+              <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #845ef7;">
+                <h4 style="margin: 0 0 0.5rem 0;">Staff Access</h4>
+                <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.9rem;">Can help the clinic manage schedules, consultation queues, and patient registration invites.</p>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                  <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" checked disabled /> View consultation queue
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" checked disabled /> Set consultation schedules
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" checked disabled /> Generate patient invites
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Current User Permissions</h3>
+            <p style="color: #666; margin-bottom: 1rem;">This section is clickable from the sidebar and shows live access rules per user role.</p>
+            <div class="admin-table">
+              <div class="admin-table-header">
+                <div>User</div>
+                <div>Role</div>
+                <div>Access Area</div>
+                <div>Permission</div>
+                <div>Assigned</div>
+              </div>
+              <div id="accessPermissionsBody"></div>
             </div>
           </div>
         </div>
@@ -1498,37 +1519,33 @@
       <!-- Audit Logs -->
       <section id="audit-logs" class="admin-section">
         <div class="card">
-          <h2>📋 Audit Logs</h2>
+          <h2>Login Activity</h2>
+          <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">See who signed in recently and who is likely online. Users are treated as online for 15 minutes after their last successful login.</p>
           
           <div class="filter-group">
             <div class="filter-field">
-              <label>Filter by User</label>
-              <input type="text" placeholder="Username or email..." />
-            </div>
-            <div class="filter-field">
-              <label>Action Type</label>
-              <select>
-                <option value="">All Actions</option>
-                <option value="login">Login</option>
-                <option value="create">Create</option>
-                <option value="update">Update</option>
-                <option value="delete">Delete</option>
-                <option value="access">Access</option>
+              <label>User Role</label>
+              <select id="auditRoleFilter">
+                <option value="">All Users</option>
+                <option value="admin">Admin</option>
+                <option value="doctor">Doctor</option>
+                <option value="staff">Staff</option>
+                <option value="patient">Patient</option>
               </select>
             </div>
             <div class="filter-field">
-              <label>Date Range</label>
-              <input type="date" />
+              <label>Login Date</label>
+              <input type="date" id="auditDateFilter" />
             </div>
           </div>
 
           <div class="admin-table">
             <div class="admin-table-header">
-              <div>Timestamp</div>
               <div>User</div>
-              <div>Action</div>
-              <div>Resource</div>
+              <div>Role</div>
+              <div>Last Login</div>
               <div>Status</div>
+              <div>Message</div>
             </div>
             <div id="auditLogsBody" style="margin-top: 1rem;">
               <div class="admin-table-row" style="justify-content: center; padding: 2rem;">
@@ -1689,11 +1706,11 @@
       } else if (target === 'qr') {
         loadQRCodes();
       } else if (target === 'access-control') {
-        // Handle access control
+        loadAccessPermissions();
       } else if (target === 'password-resets') {
         loadPasswordResetRequests();
       } else if (target === 'audit-logs') {
-        // Handle audit logs
+        loadAuditLogs();
       } else if (target === 'reports') {
         // Handle reports
       }
@@ -1774,9 +1791,99 @@
       }
     }
 
+    async function loadAccessPermissions() {
+      const table = document.getElementById('accessPermissionsBody');
+      if (!table) return;
+      table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">Loading permissions...</div>';
+
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/admin/access-permissions?userId=${authUser.id}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch permissions');
+
+        if (!data.permissions || data.permissions.length === 0) {
+          table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">No permissions found.</div>';
+          return;
+        }
+
+        table.innerHTML = data.permissions.map(permission => `
+          <div class="admin-table-row">
+            <div>${permission.display_name || `User #${permission.id}`}</div>
+            <div>${permission.role}</div>
+            <div>${permission.resource_type}</div>
+            <div>${permission.permission_level}</div>
+            <div>${new Date(permission.assigned_date).toLocaleDateString()}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        table.innerHTML = `<div class="admin-table-row" style="justify-content:center;">Failed to load permissions: ${err.message}</div>`;
+      }
+    }
+
+    async function loadAuditLogs() {
+      const table = document.getElementById('auditLogsBody');
+      if (!table) return;
+      table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">Loading audit logs...</div>';
+
+      const query = new URLSearchParams({
+        userId: authUser.id,
+        ...(auditRoleFilter?.value ? { role: auditRoleFilter.value } : {}),
+        ...(auditDateFilter?.value ? { date: auditDateFilter.value } : {}),
+      });
+
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/admin/audit-logs?${query.toString()}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch audit logs');
+
+        if (!data.logs || data.logs.length === 0) {
+          table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">No audit logs found.</div>';
+          return;
+        }
+
+        const latestByUser = new Map();
+        data.logs.forEach(log => {
+          const key = log.user_id || log.email || log.details;
+          if (!latestByUser.has(key)) latestByUser.set(key, log);
+        });
+
+        table.innerHTML = Array.from(latestByUser.values()).map(log => {
+          const lastLogin = new Date(log.created_at);
+          const minutesAgo = (Date.now() - lastLogin.getTime()) / 60000;
+          const isOnline = log.status === 'success' && minutesAgo <= 15;
+          const label = log.status === 'blocked'
+            ? 'Deactivated'
+            : log.status === 'failed'
+              ? 'Failed'
+              : isOnline
+                ? 'Online'
+                : 'Offline';
+          const statusClass = isOnline ? 'status-active' : 'status-inactive';
+
+          return `
+            <div class="admin-table-row">
+              <div>${log.display_name || log.email || 'Unknown user'}</div>
+              <div>${log.user_role || 'unknown'}</div>
+              <div>${lastLogin.toLocaleString()}</div>
+              <div><span class="status-badge ${statusClass}">${label}</span></div>
+              <div>${log.details || ''}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        if (auditDateFilter?.value) {
+          table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">No login activity found for the selected date.</div>';
+        } else {
+          table.innerHTML = `<div class="admin-table-row" style="justify-content:center;">Failed to load login activity: ${err.message}</div>`;
+        }
+      }
+    }
+
     const userSearchInput = document.getElementById('userSearchInput');
     const roleFilter = document.getElementById('roleFilter');
     const statusFilter = document.getElementById('statusFilter');
+    const auditRoleFilter = document.getElementById('auditRoleFilter');
+    const auditDateFilter = document.getElementById('auditDateFilter');
     const passwordResetStatusFilter = document.getElementById('passwordResetStatusFilter');
     const adminAddUserForm = document.getElementById('adminAddUserForm');
     const reportButtons = document.querySelectorAll('[data-report-type]');
@@ -1928,6 +2035,15 @@
             const statusClass = u.status === 'inactive' ? 'status-inactive' : 'status-active';
             const statusLabel = u.status ? u.status.toUpperCase() : 'ACTIVE';
             const toggleLabel = u.status === 'inactive' ? 'Reactivate' : 'Deactivate';
+            const isAdminAccount = u.role === 'admin';
+            const actions = isAdminAccount
+              ? '<span style="color: var(--text-secondary); font-size: 0.85rem;">Protected admin</span>'
+              : `
+              <button class="action-btn view" data-action="view" data-user-id="${u.id}">View</button>
+              <button class="action-btn edit" data-action="edit" data-user-id="${u.id}">Edit</button>
+              <button class="action-btn edit" data-action="toggle" data-user-id="${u.id}">${toggleLabel}</button>
+              <button class="action-btn delete" data-action="delete" data-user-id="${u.id}">Delete</button>
+            `;
 
             return `
           <div class="admin-table-row" data-user-id="${u.id}" data-user-status="${u.status}">
@@ -1937,10 +2053,7 @@
             <div>${u.role}</div>
             <div><span class="status-badge ${statusClass}">${statusLabel}</span></div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-              <button class="action-btn view" data-action="view" data-user-id="${u.id}">View</button>
-              <button class="action-btn edit" data-action="edit" data-user-id="${u.id}">Edit</button>
-              <button class="action-btn edit" data-action="toggle" data-user-id="${u.id}">${toggleLabel}</button>
-              <button class="action-btn delete" data-action="delete" data-user-id="${u.id}">Delete</button>
+              ${actions}
             </div>
           </div>
         `;
@@ -1993,7 +2106,7 @@
             const recordDate = new Date(r.created_at).toLocaleDateString();
 
             return `
-          <div class="admin-table-row" data-record-id="${r.id}" data-record-data='${JSON.stringify(r)}'>
+          <div class="admin-table-row" data-record-id="${r.id}" data-record-data="${encodeURIComponent(JSON.stringify(r))}">
             <div>#EMR${String(r.id).padStart(3, '0')}</div>
             <div>${patientName}</div>
             <div>Assessment</div>
@@ -2001,7 +2114,6 @@
             <div><span class="status-badge status-active">Active</span></div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button class="action-btn view" data-action="view-emr">View</button>
-              <button class="action-btn edit" data-action="edit-emr">Edit</button>
             </div>
           </div>
         `;
@@ -2012,7 +2124,7 @@
         document.querySelectorAll('button[data-action="view-emr"]').forEach(btn => {
           btn.addEventListener('click', () => {
             const row = btn.closest('.admin-table-row');
-            const recordData = JSON.parse(row.dataset.recordData);
+            const recordData = JSON.parse(decodeURIComponent(row.dataset.recordData));
             viewEMRRecord(recordData);
           });
         });
@@ -2600,11 +2712,13 @@
         const newEmail = prompt('Update email:', user.email);
         if (newEmail === null) return; // cancelled
 
-        await fetch(`${API_BASE_URL}/api/admin/users/${userId}?userId=${authUser.id}`, {
+        const updateResp = await fetch(`${API_BASE_URL}/api/admin/users/${userId}?userId=${authUser.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ displayName: newName.trim(), email: newEmail.trim() }),
         });
+        const updateData = await updateResp.json();
+        if (!updateResp.ok || !updateData.success) throw new Error(updateData.message || 'Failed to update user.');
 
         await loadUsers();
         alert('User updated successfully.');
@@ -2625,11 +2739,13 @@
         );
         if (!confirmed) return;
 
-        await fetch(`${API_BASE_URL}/api/admin/users/${userId}/status?userId=${authUser.id}`, {
+        const updateResp = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/status?userId=${authUser.id}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: targetStatus }),
         });
+        const updateData = await updateResp.json();
+        if (!updateResp.ok || !updateData.success) throw new Error(updateData.message || 'Failed to update user status.');
 
         await loadUsers();
         alert('User status updated.');
@@ -2737,6 +2853,8 @@
     userSearchInput.addEventListener('input', () => loadUsers());
     roleFilter.addEventListener('change', () => loadUsers());
     statusFilter.addEventListener('change', () => loadUsers());
+    auditRoleFilter?.addEventListener('change', () => loadAuditLogs());
+    auditDateFilter?.addEventListener('change', () => loadAuditLogs());
     passwordResetStatusFilter?.addEventListener('change', () => loadPasswordResetRequests());
     updateAddUserRoleFields();
 

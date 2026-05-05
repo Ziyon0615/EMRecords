@@ -177,6 +177,42 @@ body {
   color: #a0aec0;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 3.2rem;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.35rem;
+  height: 2.35rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.password-toggle:hover,
+.password-toggle:focus {
+  background: var(--primary-light);
+  color: var(--primary);
+  outline: none;
+}
+
 .field textarea {
   resize: vertical;
   min-height: 120px;
