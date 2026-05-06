@@ -45,6 +45,7 @@ async function notifyOverduePendingConsultations(today = getLocalDateString()) {
     if (consultation.doctor_id) {
       await db.createNotification({
         userId: consultation.doctor_id,
+        targetUserId: consultation.patient_id,
         type: 'consultation_missed_pending',
         message: `${consultation.patient_name || 'A patient'} did not attend the pending consultation request for ${when}. Please approve, reject, or follow up.`,
       });
@@ -290,7 +291,12 @@ app.post('/api/consultation-request', async (req, res) => {
     await db.createNotification({ userId, type: 'consultation_submitted', message: 'Your consultation request has been submitted and is pending doctor approval.' });
     // Create notification for doctor
     const requestedFor = consultationDate ? ` for ${consultationDate}${consultationTime ? ` at ${consultationTime}` : ''}` : '';
-    await db.createNotification({ userId: doctor.id, type: 'new_consultation', message: `New consultation request from ${user.display_name}${requestedFor}.` });
+    await db.createNotification({
+      userId: doctor.id,
+      targetUserId: user.id,
+      type: 'new_consultation',
+      message: `New consultation request from ${user.display_name}${requestedFor}.`,
+    });
     return res.status(201).json({ success: true, consultation });
   } catch (err) {
     console.error('consultation request error', err);
@@ -350,6 +356,7 @@ app.post('/api/my-consultations/:id/cancel', async (req, res) => {
     if (consultation.doctor_id) {
       await db.createNotification({
         userId: consultation.doctor_id,
+        targetUserId: user.id,
         type: 'consultation_cancelled',
         message: `${user.display_name || 'A patient'} cancelled a consultation scheduled for ${consultation.consultation_date || 'a pending date'}.`,
       });
@@ -532,6 +539,7 @@ app.post('/api/patient-record-files', async (req, res) => {
       doctors.map((doctor) =>
         db.createNotification({
           userId: doctor.id,
+          targetUserId: user.id,
           type: 'patient_record_uploaded',
           message: `${user.display_name || user.email || 'A patient'} uploaded a medical record file: ${file.file_name}.`,
         })
@@ -872,6 +880,7 @@ app.put('/api/consultations/:id/schedule', async (req, res) => {
     if (consultation.doctor_id && user.role === 'staff') {
       await db.createNotification({
         userId: consultation.doctor_id,
+        targetUserId: consultation.patient_id,
         type: 'consultation_scheduled_by_staff',
         message: `Clinic staff set a consultation schedule for ${consultation.first_name || 'a patient'} ${consultation.last_name || ''} on ${consultationDate} at ${consultationTime}.`,
       });

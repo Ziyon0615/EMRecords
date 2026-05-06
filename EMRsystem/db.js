@@ -262,17 +262,20 @@ await run(`
     )
   `);
 
-await run(`
+  await run(`
     CREATE TABLE IF NOT EXISTS notifications (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL,
+      target_user_id INTEGER,
       type TEXT NOT NULL,
       message TEXT NOT NULL,
       read INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (target_user_id) REFERENCES users(id)
     )
   `);
+  await run(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS target_user_id INTEGER;`);
 
   await run(`
     CREATE TABLE IF NOT EXISTS password_reset_requests (
@@ -557,13 +560,13 @@ async function getDoctorAvailability() {
   return rows;
 }
 
-async function createNotification({ userId, type, message }) {
+async function createNotification({ userId, type, message, targetUserId = null }) {
   const createdAt = new Date().toISOString();
   const result = await run(
-    `INSERT INTO notifications (user_id, type, message, created_at) VALUES (?, ?, ?, ?)`,
-    [userId, type, message, createdAt]
+    `INSERT INTO notifications (user_id, target_user_id, type, message, created_at) VALUES (?, ?, ?, ?, ?)`,
+    [userId, targetUserId, type, message, createdAt]
   );
-  return { id: result.lastID, userId, type, message, read: 0, createdAt };
+  return { id: result.lastID, userId, targetUserId, type, message, read: 0, createdAt };
 }
 
 async function getNotificationsByUser(userId) {

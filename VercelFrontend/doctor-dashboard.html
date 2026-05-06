@@ -1698,6 +1698,65 @@
 
     // ============ NOTIFICATIONS ============
 
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function normalizePatientName(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function getNotificationPatientId(notification) {
+      if (notification.target_user_id) return Number(notification.target_user_id);
+
+      const message = normalizePatientName(notification.message);
+      if (!message || !allPatients.length) return null;
+
+      const patientMatches = allPatients
+        .map((patient) => {
+          const names = [
+            `${patient.first_name || ''} ${patient.last_name || ''}`,
+            `${patient.first_name || ''} ${patient.middle_name || ''} ${patient.last_name || ''}`,
+            patient.display_name,
+          ]
+            .map(normalizePatientName)
+            .filter(Boolean);
+          const match = names.find((name) => message.includes(name));
+          return match ? { patient, length: match.length } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+
+      return patientMatches[0]?.patient?.user_id || null;
+    }
+
+    async function openNotificationPatient(notificationId, patientUserId) {
+      if (!patientUserId) return;
+
+      try {
+        await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, { method: 'POST' });
+      } catch (err) {
+        console.warn('Could not mark notification read', err);
+      }
+
+      switchSection('patient-records');
+      if (!allPatients.length) {
+        await loadAllPatients();
+      }
+      await selectPatientForRecords(patientUserId);
+      document.getElementById('patient-records')?.scrollIntoView({ block: 'start' });
+      loadNotifications();
+    }
+
     async function loadNotifications() {
       try {
         const resp = await fetch(`${API_BASE_URL}/api/notifications?userId=${authUser.id}`);
@@ -1712,12 +1771,39 @@
           return;
         }
 
-        list.innerHTML = data.notifications.map(n => `
-          <div class="data-card" style="opacity: ${n.read ? '0.6' : '1'};">
-            <p style="margin: 0 0 0.5rem 0;">${n.message}</p>
-            <p style="margin: 0; font-size: 0.85rem; color: var(--muted);">${new Date(n.created_at).toLocaleString()}</p>
-          </div>
-        `).join('');
+        if (!allPatients.length) {
+          await loadAllPatients();
+        }
+
+        list.innerHTML = data.notifications.map(n => {
+          const patientUserId = getNotificationPatientId(n);
+          const clickableStyles = patientUserId
+            ? 'cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;'
+            : '';
+          const clickableAttrs = patientUserId
+            ? `role="button" tabindex="0" data-notification-id="${n.id}" data-patient-id="${patientUserId}" title="Open patient record"`
+            : '';
+          const helperText = patientUserId ? '<span style="color: var(--primary); font-size: 0.85rem; font-weight: 600;">Open patient record</span>' : '';
+
+          return `
+            <div class="data-card notification-card" ${clickableAttrs} style="opacity: ${n.read ? '0.6' : '1'}; ${clickableStyles}">
+              <p style="margin: 0 0 0.5rem 0;">${escapeHtml(n.message)}</p>
+              <p style="margin: 0; font-size: 0.85rem; color: var(--muted);">${new Date(n.created_at).toLocaleString()}</p>
+              ${helperText}
+            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('[data-patient-id]').forEach((card) => {
+          const handleOpen = () => openNotificationPatient(card.dataset.notificationId, Number(card.dataset.patientId));
+          card.addEventListener('click', handleOpen);
+          card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleOpen();
+            }
+          });
+        });
       } catch (err) {
         document.getElementById('notificationsList').innerHTML = `<p style="color: var(--danger);">Error: ${err.message}</p>`;
       }
