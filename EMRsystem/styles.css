@@ -24,6 +24,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", sans-serif;
@@ -31,11 +35,13 @@ body {
   background: var(--bg-primary);
   min-height: 100vh;
   line-height: 1.6;
+  overflow-x: hidden;
 }
 
 .container {
   padding: 2rem 1rem 3rem;
   max-width: var(--max-width);
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -50,11 +56,12 @@ body {
   font-size: 2.5rem;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
   background: linear-gradient(135deg, #0066cc, #0052a3);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  overflow-wrap: anywhere;
 }
 
 .brand p {
@@ -72,6 +79,12 @@ body {
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
   transition: var(--transition);
+  width: 100%;
+}
+
+.registration-page .card {
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .card:hover {
@@ -88,6 +101,9 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .card h3 {
@@ -144,17 +160,20 @@ body {
 }
 
 .field label {
-  font-size: 0.95rem;
   color: var(--text-primary);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .field input,
 .field select,
 .field textarea {
+  width: 100%;
+  min-width: 0;
   padding: 0.9rem 1rem;
   border-radius: 8px;
   border: 2px solid var(--border);
@@ -163,6 +182,21 @@ body {
   font-size: 1rem;
   font-family: inherit;
   transition: var(--transition);
+}
+
+.field input[type="checkbox"] {
+  width: 1.1rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.field input[type="file"] {
+  max-width: 100%;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
 .field input:focus,
@@ -232,7 +266,10 @@ button.primary {
   transition: var(--transition);
   box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 button.primary:hover {
@@ -266,6 +303,7 @@ button.secondary:hover {
   color: var(--text-secondary);
   text-align: center;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .muted {
@@ -286,19 +324,92 @@ button.secondary:hover {
   line-height: 1.6;
   border-top: 1px solid var(--border);
   padding-top: 1.5rem;
+  overflow-wrap: anywhere;
 }
 
 /* ============ RESPONSIVE ============ */
 @media (max-width: 640px) {
   .container {
-    padding: 1.5rem 1rem 2.5rem;
+    padding: 1rem 0.75rem 2rem;
   }
 
   .brand h1 {
-    font-size: 2rem;
+    font-size: 1.7rem;
+  }
+
+  .brand p {
+    font-size: 0.95rem;
+    line-height: 1.45;
   }
 
   .card {
-    padding: 1.5rem 1.2rem;
+    padding: 1.15rem;
+    border-radius: 10px;
+  }
+
+  .card h2 {
+    font-size: 1.15rem;
+    margin-bottom: 1rem;
+  }
+
+  .form {
+    gap: 1rem;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 16px;
+    padding: 0.8rem 0.85rem;
+  }
+
+  .password-field input {
+    padding-right: 3rem;
+  }
+
+  #ocrModal {
+    align-items: flex-start !important;
+    padding: 0.75rem;
+    overflow-y: auto;
+  }
+
+  #ocrModal > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    padding: 1rem !important;
+    margin: 0 auto;
+  }
+
+  #ocrModal h2 {
+    font-size: 1.2rem;
+  }
+
+  #ocrModal button.primary {
+    min-height: 3rem;
+    padding: 0.85rem 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  #ocrModal > div > div:last-child {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 420px) {
+  .container {
+    padding-inline: 0.5rem;
+  }
+
+  .card {
+    padding: 1rem 0.85rem;
+  }
+
+  .brand h1 {
+    font-size: 1.55rem;
+  }
+
+  .footer {
+    font-size: 0.78rem;
   }
 }
