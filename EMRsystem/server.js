@@ -208,8 +208,8 @@ app.post('/api/register', async (req, res) => {
     }
 
     await writeAuditLog({
-      userId,
-      userRole: admin.role,
+      userId: user.id,
+      userRole: user.role,
       action: 'create',
       resource: 'User Management',
       details: `Created ${role} account ${email}.`,
