@@ -328,6 +328,11 @@
     }
 
     @media (max-width: 850px) {
+      .staff-shell {
+        width: 100%;
+        padding: 16px 12px 28px;
+      }
+
       .staff-header,
       .panel-head,
       .queue-title {
@@ -344,6 +349,66 @@
       .detail-grid,
       .invite-grid {
         grid-template-columns: 1fr;
+      }
+
+      .staff-content {
+        grid-template-columns: 1fr;
+      }
+
+      .staff-side-nav {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 8px;
+        border-radius: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .tab {
+        flex: 0 0 auto;
+        min-height: 42px;
+        white-space: nowrap;
+      }
+
+      .tab.active {
+        border-left: 0;
+        border-bottom: 4px solid var(--yellow);
+      }
+
+      .panel,
+      .summary-card,
+      .queue-card {
+        padding: 14px;
+      }
+
+      .schedule-form {
+        grid-template-columns: 1fr;
+      }
+
+      .btn {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .staff-header h1 {
+        font-size: 1.55rem;
+      }
+
+      .summary-card strong {
+        font-size: 1.7rem;
+      }
+
+      .qr-box {
+        min-height: 180px;
+      }
+
+      #qrImage {
+        max-width: 100% !important;
       }
     }
   </style>

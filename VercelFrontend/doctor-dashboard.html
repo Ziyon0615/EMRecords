@@ -687,6 +687,139 @@
     .sidebar::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.5);
     }
+
+    @media (max-width: 768px) {
+      body {
+        display: block;
+        overflow-x: hidden;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        width: 100%;
+        height: auto;
+        padding: 0.85rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        z-index: 300;
+      }
+
+      .sidebar-header {
+        padding: 0 0 0.65rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .sidebar-nav {
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .sidebar-nav-item {
+        flex: 0 0 auto;
+        min-height: 42px;
+        white-space: nowrap;
+        font-size: 0.82rem;
+      }
+
+      .sidebar-nav-item.active {
+        border-left: 0;
+        border-bottom: 4px solid #ffd700;
+      }
+
+      .main-wrapper {
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .dashboard-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 0 0 0.75rem 0.75rem;
+      }
+
+      .dashboard-header .header-left {
+        align-items: flex-start;
+      }
+
+      .dashboard-header h1 {
+        font-size: 1.35rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .dashboard-header .header-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .search-box {
+        order: 3;
+        width: 100%;
+        display: block;
+      }
+
+      .tab-nav {
+        padding: 0.75rem;
+        gap: 0.5rem;
+      }
+
+      .doc-layout {
+        padding: 0.75rem;
+        gap: 1rem;
+      }
+
+      .doc-sidebar,
+      .doc-main,
+      .analytics-card {
+        width: 100%;
+        max-width: none;
+      }
+
+      .card,
+      .data-card,
+      .report-card {
+        padding: 1rem;
+      }
+
+      .report-head,
+      .schedule-item {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .data-row,
+      .report-grid,
+      .two-col,
+      .inline-schedule-form,
+      .schedule-grid-form {
+        grid-template-columns: 1fr;
+      }
+
+      .report-table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      .consultation-actions {
+        flex-direction: column;
+      }
+
+      .consultation-actions button,
+      button.primary {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
   </style>
   <script src="api-config.js"></script>
 </head>

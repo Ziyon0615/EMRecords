@@ -1088,6 +1088,147 @@
     .admin-content::-webkit-scrollbar-thumb:hover {
       background: #999;
     }
+
+    @media (max-width: 768px) {
+      body {
+        display: block;
+        overflow-x: hidden;
+      }
+
+      .sidebar {
+        position: sticky;
+        left: auto;
+        top: 0;
+        width: 100%;
+        height: auto;
+        transform: none;
+        padding: 0.85rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        z-index: 300;
+      }
+
+      .sidebar-header {
+        padding: 0 0 0.65rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .sidebar-header h2 {
+        font-size: 1rem;
+      }
+
+      .sidebar-nav {
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .sidebar-nav-item {
+        flex: 0 0 auto;
+        min-height: 42px;
+        white-space: nowrap;
+        font-size: 0.82rem;
+      }
+
+      .sidebar-nav-item.active {
+        border-left: 0;
+        border-bottom: 4px solid #ffd700;
+      }
+
+      .main-wrapper {
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .admin-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 0 0 0.75rem 0.75rem;
+      }
+
+      .admin-header h1 {
+        font-size: 1.35rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .header-left {
+        align-items: flex-start;
+      }
+
+      .header-actions,
+      .user-info,
+      .report-output-header,
+      .audit-log-header,
+      .modal-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .admin-content {
+        padding: 0.75rem;
+        overflow-x: hidden;
+      }
+
+      .admin-nav,
+      .dashboard-tabs,
+      .stats-grid,
+      .dashboard-grid,
+      .filter-group,
+      .report-kpi-grid,
+      .report-section-grid {
+        grid-template-columns: 1fr;
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .card,
+      .card-section,
+      .stat-card,
+      .metric-card,
+      .audit-log,
+      .filter-group,
+      .chart-placeholder,
+      .report-output,
+      .modal-content {
+        padding: 1rem;
+      }
+
+      .admin-table,
+      .report-panel {
+        overflow-x: auto;
+      }
+
+      .admin-table-header,
+      .admin-table-row {
+        grid-template-columns: minmax(160px, 1fr);
+        gap: 0.5rem;
+      }
+
+      .report-table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      .qr-display img {
+        max-width: 100%;
+      }
+
+      .action-btn,
+      .btn-export,
+      button.primary {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
   </style>
   <script src="api-config.js"></script>
   <script src="password-toggle.js" defer></script>

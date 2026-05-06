@@ -658,6 +658,133 @@
       color: #1a202c;
       background: rgba(255, 255, 255, 0.9) !important;
     }
+
+    @media (max-width: 768px) {
+      body {
+        display: block;
+        overflow-x: hidden;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        width: 100%;
+        height: auto;
+        max-height: none;
+        padding: 0.85rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        z-index: 300;
+      }
+
+      .sidebar-header {
+        padding: 0 0 0.65rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .sidebar-nav {
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .sidebar-section {
+        display: contents;
+      }
+
+      .sidebar-section-title {
+        display: none;
+      }
+
+      .sidebar-nav-item {
+        flex: 0 0 auto;
+        min-height: 42px;
+        white-space: nowrap;
+        font-size: 0.82rem;
+      }
+
+      .sidebar-nav-item.active {
+        border-left: 0;
+        border-bottom: 4px solid #ffd700;
+      }
+
+      .main-wrapper {
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
+        padding: 0 0.75rem 1.5rem;
+      }
+
+      .dashboard-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        padding: 1rem;
+        border-radius: 0 0 0.75rem 0.75rem;
+      }
+
+      .dashboard-header .header-left {
+        align-items: flex-start;
+      }
+
+      .dashboard-header h1 {
+        font-size: 1.35rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .dashboard-header .header-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+
+      .notifications-dropdown {
+        left: 0.75rem;
+        right: 0.75rem;
+        top: 100%;
+        width: auto;
+      }
+
+      .stat-grid,
+      .quick-actions,
+      .form-row,
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stat-card,
+      .data-card,
+      .card {
+        padding: 1rem;
+      }
+
+      .stat-card-header {
+        align-items: flex-start;
+      }
+
+      .data-row,
+      .info-line {
+        grid-template-columns: 1fr;
+        gap: 0.35rem;
+        align-items: start;
+      }
+
+      .availability-calendar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .calendar-day {
+        min-height: 88px;
+      }
+
+      button.primary,
+      .quick-actions .nav-btn {
+        min-height: 44px;
+      }
+    }
   </style>
   <script src="api-config.js"></script>
 </head>
