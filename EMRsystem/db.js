@@ -526,6 +526,26 @@ async function createConsultation({ patientId, doctorId, concerns, consultationD
   return { id: result.lastID, patientId, doctorId, status: 'pending', consultationDate: consultationDate || null, consultationTime: consultationTime || null, concerns, createdAt, updatedAt };
 }
 
+async function countDoctorConsultationsForDate(doctorId, consultationDate, excludeConsultationId = null) {
+  const conditions = [
+    `doctor_id = ?`,
+    `consultation_date = ?`,
+    `LOWER(TRIM(COALESCE(status, 'pending'))) NOT IN ('cancelled', 'denied', 'rejected', 'marked-no-show')`,
+  ];
+  const params = [doctorId, consultationDate];
+
+  if (excludeConsultationId) {
+    conditions.push(`id != ?`);
+    params.push(excludeConsultationId);
+  }
+
+  const row = await get(
+    `SELECT COUNT(DISTINCT patient_id) AS count FROM consultations WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  return Number(row?.count || 0);
+}
+
 async function getConsultationsByPatient(patientId) {
   const rows = await getAll(`SELECT c.*, u.display_name as doctor_name FROM consultations c LEFT JOIN users u ON c.doctor_id = u.id WHERE c.patient_id = ? ORDER BY c.created_at DESC`, [patientId]);
   return rows;
@@ -1396,6 +1416,7 @@ module.exports = {
   createPatientProfile,
   createPatientAssessment,
   createConsultation,
+  countDoctorConsultationsForDate,
   getConsultationsByPatient,
   getDoctorAvailability,
   createNotification,

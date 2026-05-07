@@ -6,6 +6,30 @@
   <title>Health Assessment | EMR Access</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="api-config.js"></script>
+  <style>
+    .assessment-radio-group {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .assessment-choice {
+      display: inline-flex !important;
+      align-items: center;
+      gap: 0.35rem;
+      text-transform: none !important;
+      white-space: nowrap;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      line-height: 1.2;
+    }
+
+    .assessment-choice input {
+      width: auto;
+      min-width: 0;
+    }
+  </style>
 </head>
 <body>
   <main class="container">
@@ -81,9 +105,28 @@
       { key: 'difficultyBreathing', question: 'Have you recently experienced difficulty breathing?' },
       { key: 'diarrheaVomiting', question: 'Have you recently experienced diarrhea or vomiting?' },
       { key: 'exposedIllness', question: 'Have you recently been exposed to a contagious illness?' },
-      { key: 'pregnant', question: 'Are you currently pregnant?', type: 'options', options: ['Yes', 'No', 'Not Applicable'] },
-      { key: 'breastfeeding', question: 'Are you currently breastfeeding?', type: 'options', options: ['Yes', 'No', 'Not Applicable'] },
+      { key: 'pregnant', question: 'Are you currently pregnant?', type: 'options', options: ['Yes', 'No', 'Not Applicable'], femaleOnly: true },
+      { key: 'breastfeeding', question: 'Are you currently breastfeeding?', type: 'options', options: ['Yes', 'No', 'Not Applicable'], femaleOnly: true },
     ];
+    let activeQuestions = questions;
+
+    function normalizeSex(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    async function getPatientSex() {
+      const storedSex = normalizeSex(authUser?.patientProfile?.sex || authUser?.sex);
+      if (storedSex) return storedSex;
+
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/my-emr?userId=${authUser.id}`);
+        const data = await resp.json().catch(() => ({}));
+        return normalizeSex(data?.emr?.sex);
+      } catch (err) {
+        console.warn('[ASSESSMENT SEX LOOKUP]', err);
+        return '';
+      }
+    }
 
     function renderQuestion(q) {
       const container = document.createElement('div');
@@ -101,15 +144,12 @@
         container.appendChild(select);
       } else {
         const radios = document.createElement('div');
-        radios.style.display = 'flex';
-        radios.style.gap = '1rem';
+        radios.className = 'assessment-radio-group';
 
         ['Yes', 'No'].forEach((option) => {
           const id = `q-${q.key}-${option.toLowerCase()}`;
           const wrap = document.createElement('label');
-          wrap.style.display = 'flex';
-          wrap.style.alignItems = 'center';
-          wrap.style.gap = '0.25rem';
+          wrap.className = 'assessment-choice';
 
           const input = document.createElement('input');
           input.type = 'radio';
@@ -132,10 +172,19 @@
       return container;
     }
 
-    // Render all questions
-    questions.forEach((q) => {
-      assessmentQuestions.appendChild(renderQuestion(q));
-    });
+    async function renderAssessmentQuestions() {
+      if (!authUser || !authUser.id) return;
+
+      const patientSex = await getPatientSex();
+      const isMale = patientSex === 'male' || patientSex === 'm';
+      activeQuestions = questions.filter((q) => !isMale || !q.femaleOnly);
+      assessmentQuestions.innerHTML = '';
+      activeQuestions.forEach((q) => {
+        assessmentQuestions.appendChild(renderQuestion(q));
+      });
+    }
+
+    renderAssessmentQuestions();
 
     assessmentForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -149,7 +198,12 @@
         answers[key] = value;
       }
 
-      const firstMissingQuestion = questions.find((question) => !answers[question.key]);
+      if (!activeQuestions.some((question) => question.key === 'pregnant')) {
+        answers.pregnant = 'not_applicable';
+        answers.breastfeeding = 'not_applicable';
+      }
+
+      const firstMissingQuestion = activeQuestions.find((question) => !answers[question.key]);
       if (firstMissingQuestion) {
         assessmentHint.textContent = `Please answer all questions. Missing: ${firstMissingQuestion.question}`;
         assessmentHint.style.color = 'var(--danger)';

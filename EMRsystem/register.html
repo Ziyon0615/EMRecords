@@ -616,7 +616,7 @@
         }
 
         alert('✓ Registration successful! Please complete your health assessment.');
-        localStorage.setItem('authUser', JSON.stringify(data.user));
+        localStorage.setItem('authUser', JSON.stringify({ ...data.user, patientProfile: data.patientProfile || null }));
         window.location.href = 'assessment.html';
       } catch (err) {
         console.error('[REGISTER ERROR]', err);

@@ -16,6 +16,7 @@ const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
 const MAX_RECORD_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_RECORD_FILE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+const MAX_DOCTOR_CONSULTATIONS_PER_DAY = 10;
 
 function getFrontendUrl(req) {
   return FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
@@ -30,6 +31,17 @@ function getLocalDateString(date = new Date()) {
   }).formatToParts(date);
   const getPart = (type) => parts.find((part) => part.type === type)?.value;
   return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+}
+
+async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeConsultationId = null }) {
+  if (!doctorId || !consultationDate) return;
+
+  const scheduledCount = await db.countDoctorConsultationsForDate(doctorId, consultationDate, excludeConsultationId);
+  if (scheduledCount >= MAX_DOCTOR_CONSULTATIONS_PER_DAY) {
+    const error = new Error(`This doctor already has ${MAX_DOCTOR_CONSULTATIONS_PER_DAY} patients scheduled for ${consultationDate}. Please choose another date.`);
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 async function notifyOverduePendingConsultations(today = getLocalDateString()) {
@@ -284,6 +296,8 @@ app.post('/api/consultation-request', async (req, res) => {
           message: 'There is no available doctor schedule for the date/time you selected. Please choose a green available date from the calendar.',
         });
       }
+
+      await ensureDoctorDailyCapacity({ doctorId: doctor.id, consultationDate });
     }
 
     const consultation = await db.createConsultation({ patientId: userId, doctorId: doctor.id, concerns, consultationDate, consultationTime });
@@ -300,7 +314,7 @@ app.post('/api/consultation-request', async (req, res) => {
     return res.status(201).json({ success: true, consultation });
   } catch (err) {
     console.error('consultation request error', err);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : 'Internal server error.' });
   }
 });
 
@@ -859,6 +873,13 @@ app.put('/api/consultations/:id/schedule', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Consultation not found.' });
     }
 
+    const targetDoctorId = user.role === 'doctor' ? user.id : consultation.doctor_id;
+    await ensureDoctorDailyCapacity({
+      doctorId: targetDoctorId,
+      consultationDate,
+      excludeConsultationId: consultationId,
+    });
+
     const updates = {
       consultation_date: consultationDate,
       consultation_time: consultationTime,
@@ -889,7 +910,7 @@ app.put('/api/consultations/:id/schedule', async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error('set consultation schedule error', err);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : 'Internal server error.' });
   }
 });
 
@@ -3514,6 +3535,11 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only doctors can update consultations.' });
     }
 
+    const existingConsultation = await db.getConsultationById(consultationId);
+    if (!existingConsultation) {
+      return res.status(404).json({ success: false, message: 'Consultation not found.' });
+    }
+
     const normalizedStatus = status === 'approved'
       ? 'scheduled'
       : status === 'rejected'
@@ -3536,6 +3562,15 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
       updates.result_updated_at = new Date().toISOString();
     }
     updates.doctor_id = userId;
+
+    const targetDate = consultationDate || existingConsultation.consultation_date;
+    if (targetDate && (consultationDate || normalizedStatus === 'scheduled')) {
+      await ensureDoctorDailyCapacity({
+        doctorId: userId,
+        consultationDate: targetDate,
+        excludeConsultationId: consultationId,
+      });
+    }
 
     await db.updateConsultation(consultationId, updates);
 
@@ -3567,7 +3602,7 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error('update consultation error', err);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : 'Internal server error.' });
   }
 });
 

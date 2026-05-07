@@ -963,6 +963,10 @@
         <form id="availabilityForm" class="form">
           <div class="form-row">
             <div class="field">
+              <label for="availabilityMonth">Availability Month</label>
+              <input type="month" id="availabilityMonth" name="availabilityMonth" />
+            </div>
+            <div class="field">
               <label for="availableDate">Available Date</label>
               <input type="date" id="availableDate" name="availableDate" required />
             </div>
@@ -1013,6 +1017,7 @@
         </form>
 
         <h3 style="margin-top: 2rem;">Your Current Availability</h3>
+        <p id="availabilityMonthHint" style="color: var(--muted); margin: 0 0 1rem 0; font-size: 0.9rem;"></p>
         <div id="currentAvailability" class="card-list"></div>
       </div>
     </section>
@@ -1714,10 +1719,77 @@
 
     // ============ AVAILABILITY ============
 
+    const availabilityMonthInput = document.getElementById('availabilityMonth');
+    const availableDateInput = document.getElementById('availableDate');
+
+    function getCurrentMonthValue() {
+      return new Date().toISOString().slice(0, 7);
+    }
+
+    function getMonthLastDay(monthValue) {
+      const [year, month] = monthValue.split('-').map(Number);
+      return new Date(year, month, 0).getDate();
+    }
+
+    function syncAvailabilityMonth() {
+      const monthValue = availabilityMonthInput.value || getCurrentMonthValue();
+      availabilityMonthInput.value = monthValue;
+      availableDateInput.min = `${monthValue}-01`;
+      availableDateInput.max = `${monthValue}-${String(getMonthLastDay(monthValue)).padStart(2, '0')}`;
+
+      if (!availableDateInput.value || !availableDateInput.value.startsWith(monthValue)) {
+        availableDateInput.value = availableDateInput.min;
+      }
+
+      renderCurrentAvailability();
+    }
+
+    function renderCurrentAvailability() {
+      const list = document.getElementById('currentAvailability');
+      const hint = document.getElementById('availabilityMonthHint');
+      const selectedMonth = availabilityMonthInput.value || getCurrentMonthValue();
+      const filteredAvailability = (availabilityData || []).filter((a) => String(a.available_date || '').startsWith(selectedMonth));
+
+      hint.textContent = `Showing availability for ${selectedMonth}.`;
+
+      if (availabilityData.length === 0) {
+        list.innerHTML = '<p style="color: var(--muted);">No availability set yet.</p>';
+        return;
+      }
+
+      if (filteredAvailability.length === 0) {
+        list.innerHTML = '<p style="color: var(--muted);">No availability set for this month.</p>';
+        return;
+      }
+
+      list.innerHTML = filteredAvailability.map(a => {
+        const slots = JSON.parse(a.available_time_slots || '[]');
+        return `
+          <div class="data-card">
+            <form class="schedule-grid-form" onsubmit="updateAvailability(event, ${a.id})">
+              <input type="date" name="availableDate" value="${a.available_date}" required />
+              <input type="text" name="timeSlots" value="${slots.join(', ')}" required title="Comma-separated time slots" />
+              <button class="primary" type="submit">Save</button>
+              <button class="primary" type="button" style="background:#c92a2a;" onclick="deleteAvailability(${a.id})">Delete</button>
+            </form>
+            <div class="data-row" style="margin-top:0.75rem;">
+              <div class="data-label">Slots</div>
+              <div class="time-slots">
+                ${slots.map(t => `<div class="time-slot">${t}</div>`).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    availabilityMonthInput.addEventListener('change', syncAvailabilityMonth);
+    syncAvailabilityMonth();
+
     document.getElementById('availabilityForm').addEventListener('submit', async (event) => {
       event.preventDefault();
 
-      const availableDate = document.getElementById('availableDate').value;
+      const availableDate = availableDateInput.value;
       const repeatMode = document.getElementById('repeatMode').value;
       const repeatCount = document.getElementById('repeatCount').value;
       const timeSlots = Array.from(document.querySelectorAll('.time-check:checked')).map(cb => cb.value);
@@ -1738,6 +1810,7 @@
         document.getElementById('availabilityHint').textContent = '✓ Availability set successfully.';
         document.getElementById('availabilityHint').style.color = 'var(--success)';
         document.getElementById('availabilityForm').reset();
+        syncAvailabilityMonth();
         loadMyAvailability();
       } catch (err) {
         document.getElementById('availabilityHint').textContent = `❌ ${err.message}`;
@@ -1753,32 +1826,7 @@
 
         availabilityData = data.availability || [];
         renderAvailabilityList();
-
-        const list = document.getElementById('currentAvailability');
-        if (!availabilityData || availabilityData.length === 0) {
-          list.innerHTML = '<p style="color: var(--muted);">No availability set yet.</p>';
-          return;
-        }
-
-        list.innerHTML = availabilityData.map(a => {
-          const slots = JSON.parse(a.available_time_slots || '[]');
-          return `
-          <div class="data-card">
-            <form class="schedule-grid-form" onsubmit="updateAvailability(event, ${a.id})">
-              <input type="date" name="availableDate" value="${a.available_date}" required />
-              <input type="text" name="timeSlots" value="${slots.join(', ')}" required title="Comma-separated time slots" />
-              <button class="primary" type="submit">Save</button>
-              <button class="primary" type="button" style="background:#c92a2a;" onclick="deleteAvailability(${a.id})">Delete</button>
-            </form>
-            <div class="data-row" style="margin-top:0.75rem;">
-              <div class="data-label">Slots</div>
-              <div class="time-slots">
-                ${slots.map(t => `<div class="time-slot">${t}</div>`).join('')}
-              </div>
-            </div>
-          </div>
-        `;
-        }).join('');
+        renderCurrentAvailability();
       } catch (err) {
         document.getElementById('currentAvailability').innerHTML = `<p style="color: var(--danger);">Error: ${err.message}</p>`;
       }
