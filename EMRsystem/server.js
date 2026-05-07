@@ -33,6 +33,31 @@ function getLocalDateString(date = new Date()) {
   return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
 }
 
+function isFutureDateString(dateString) {
+  return Boolean(dateString) && dateString > getLocalDateString();
+}
+
+function isValidPersonName(value, { required = true } = {}) {
+  const text = String(value || '').trim();
+  if (!text) return !required;
+  return /^[\p{L}\s.'-]+$/u.test(text);
+}
+
+function isDigitsOnly(value, { required = true } = {}) {
+  const text = String(value || '').trim();
+  if (!text) return !required;
+  return /^\d+$/.test(text);
+}
+
+function getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber }) {
+  if (!isValidPersonName(firstName)) return 'First name can only contain letters.';
+  if (!isValidPersonName(middleName, { required: false })) return 'Middle name can only contain letters.';
+  if (!isValidPersonName(lastName)) return 'Last name can only contain letters.';
+  if (!isDigitsOnly(mobile)) return 'Mobile number can only contain numbers.';
+  if (!isDigitsOnly(philhealthNumber, { required: false })) return 'PhilHealth number can only contain numbers.';
+  return '';
+}
+
 async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeConsultationId = null }) {
   if (!doctorId || !consultationDate) return;
 
@@ -146,6 +171,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     let invite = null;
+    let patientAge = null;
     if (role === 'patient') {
       // Invite token is optional for patient registration (clinic workflow).
       // If provided, validate and mark as used; if not valid, registration can still proceed.
@@ -163,7 +189,6 @@ app.post('/api/register', async (req, res) => {
       if (!lastName) missingFields.push('lastName');
       if (!mobile) missingFields.push('mobile');
       if (!dateOfBirth) missingFields.push('dateOfBirth');
-      if (!age && age !== 0) missingFields.push('age');
       if (!sex) missingFields.push('sex');
       if (!civilStatus) missingFields.push('civilStatus');
       if (!address) missingFields.push('address');
@@ -176,6 +201,17 @@ app.post('/api/register', async (req, res) => {
           message: `Missing required patient profile fields: ${missingFields.join(', ')}`,
         });
       }
+
+      if (isFutureDateString(dateOfBirth)) {
+        return res.status(400).json({ success: false, message: 'Date of birth cannot be in the future.' });
+      }
+
+      const validationMessage = getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber });
+      if (validationMessage) {
+        return res.status(400).json({ success: false, message: validationMessage });
+      }
+
+      patientAge = calculateAge(dateOfBirth);
     }
 
     if (role === 'doctor' && !(license || licenseNumber)) {
@@ -202,7 +238,7 @@ app.post('/api/register', async (req, res) => {
         email,
         mobile,
         dateOfBirth,
-        age: Number(age),
+        age: patientAge,
         sex,
         civilStatus,
         address,
@@ -1163,6 +1199,7 @@ app.post('/api/admin/users', async (req, res) => {
     let patientProfile = null;
     let doctorProfile = null;
     let staffProfile = null;
+    let patientAge = null;
 
     if (role === 'doctor') {
       doctorProfile = await db.createDoctorProfile({ userId: user.id, licenseNumber: license || licenseNumber });
@@ -1179,7 +1216,6 @@ app.post('/api/admin/users', async (req, res) => {
         lastName,
         mobile,
         dateOfBirth,
-        age,
         sex,
         civilStatus,
         address,
@@ -1194,6 +1230,19 @@ app.post('/api/admin/users', async (req, res) => {
         return res.status(400).json({ success: false, message: `Missing required patient fields: ${missing.join(', ')}` });
       }
 
+      if (isFutureDateString(dateOfBirth)) {
+        await db.deleteUserCascade(user.id);
+        return res.status(400).json({ success: false, message: 'Date of birth cannot be in the future.' });
+      }
+
+      const validationMessage = getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber });
+      if (validationMessage) {
+        await db.deleteUserCascade(user.id);
+        return res.status(400).json({ success: false, message: validationMessage });
+      }
+
+      patientAge = calculateAge(dateOfBirth);
+
       patientProfile = await db.createPatientProfile({
         userId: user.id,
         username: requiredPatientFields.username,
@@ -1204,7 +1253,7 @@ app.post('/api/admin/users', async (req, res) => {
         email,
         mobile,
         dateOfBirth,
-        age: Number(age),
+        age: patientAge,
         sex,
         civilStatus,
         address,

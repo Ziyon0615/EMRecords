@@ -103,7 +103,7 @@
 
         <div class="field">
           <label for="age">Age</label>
-          <input type="number" id="age" name="age" min="0" required />
+          <input type="number" id="age" name="age" min="0" required disabled />
         </div>
 
         <div class="field">
@@ -135,17 +135,17 @@
 
         <div class="field">
           <label for="mobile">Mobile Number</label>
-          <input type="tel" id="mobile" name="mobile" required />
+          <input type="tel" id="mobile" name="mobile" inputmode="numeric" pattern="[0-9]*" required />
         </div>
 
         <div class="field">
           <label for="idNumber">ID Number</label>
-          <input type="text" id="idNumber" name="idNumber" />
+          <input type="text" id="idNumber" name="idNumber" inputmode="numeric" pattern="[0-9]*" />
         </div>
 
         <div class="field">
           <label for="philhealthNumber">PhilHealth Number (optional)</label>
-          <input type="text" id="philhealthNumber" name="philhealthNumber" />
+          <input type="text" id="philhealthNumber" name="philhealthNumber" inputmode="numeric" pattern="[0-9]*" />
         </div>
 
         <!-- Security Section -->
@@ -429,15 +429,15 @@
 
     function populateFormFromOcr(data) {
       data = normalizeOcrData(data);
-      if (data.firstName) document.getElementById('firstName').value = data.firstName;
-      if (data.middleName) document.getElementById('middleName').value = data.middleName;
-      if (data.lastName) document.getElementById('lastName').value = data.lastName;
+      if (data.firstName) document.getElementById('firstName').value = sanitizeNameInput(data.firstName);
+      if (data.middleName) document.getElementById('middleName').value = sanitizeNameInput(data.middleName);
+      if (data.lastName) document.getElementById('lastName').value = sanitizeNameInput(data.lastName);
       if (data.suffix) document.getElementById('suffix').value = data.suffix;
       if (data.dateOfBirth) document.getElementById('dateOfBirth').value = data.dateOfBirth;
-      if (data.age) document.getElementById('age').value = data.age;
+      syncAgeFromDateOfBirth(false);
       if (data.sex) document.getElementById('sex').value = data.sex;
       if (data.address) document.getElementById('address').value = data.address;
-      if (data.idNumber) document.getElementById('idNumber').value = data.idNumber;
+      if (data.idNumber) document.getElementById('idNumber').value = sanitizeNumericInput(data.idNumber);
     }
 
     // ============ EVENT LISTENERS ============
@@ -537,17 +537,63 @@
       return missing;
     }
 
-    document.getElementById('dateOfBirth').addEventListener('change', () => {
-      const dob = document.getElementById('dateOfBirth').value;
-      if (!dob) return;
-      const birth = new Date(dob);
+    function sanitizeNameInput(value) {
+      return String(value || '').replace(/[^\p{L}\s.'-]/gu, '');
+    }
+
+    function sanitizeNumericInput(value) {
+      return String(value || '').replace(/\D/g, '');
+    }
+
+    function bindInputSanitizer(id, sanitizer) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.addEventListener('input', () => {
+        const cleanValue = sanitizer(input.value);
+        if (input.value !== cleanValue) input.value = cleanValue;
+      });
+    }
+
+    ['firstName', 'middleName', 'lastName'].forEach(id => bindInputSanitizer(id, sanitizeNameInput));
+    ['mobile', 'idNumber', 'philhealthNumber'].forEach(id => bindInputSanitizer(id, sanitizeNumericInput));
+
+    function calculateAgeFromDob(dob) {
+      if (!dob) return '';
+      const birth = new Date(`${dob}T00:00:00`);
       const today = new Date();
       let age = today.getFullYear() - birth.getFullYear();
       const m = today.getMonth() - birth.getMonth();
       if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
         age--;
       }
-      document.getElementById('age').value = Math.max(0, age);
+      return Math.max(0, age);
+    }
+
+    function syncAgeFromDateOfBirth(showMessage = true) {
+      const dobInput = document.getElementById('dateOfBirth');
+      const ageInput = document.getElementById('age');
+      const dob = dobInput.value;
+      if (!dob) {
+        ageInput.value = '';
+        return true;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      if (dob > today) {
+        dobInput.value = '';
+        ageInput.value = '';
+        if (showMessage) setHint('Date of birth cannot be in the future.', true);
+        return false;
+      }
+
+      ageInput.value = calculateAgeFromDob(dob);
+      return true;
+    }
+
+    const dateOfBirthInput = document.getElementById('dateOfBirth');
+    dateOfBirthInput.max = new Date().toISOString().slice(0, 10);
+    dateOfBirthInput.addEventListener('change', () => {
+      syncAgeFromDateOfBirth();
     });
 
     regForm.addEventListener('submit', async (event) => {
@@ -563,6 +609,10 @@
 
       if (!document.getElementById('dataPrivacyConsent').checked) {
         setHint('❌ You must consent to the Data Privacy Act of 2012.', true);
+        return;
+      }
+
+      if (!syncAgeFromDateOfBirth()) {
         return;
       }
 
