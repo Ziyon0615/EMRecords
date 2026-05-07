@@ -526,11 +526,13 @@ async function createConsultation({ patientId, doctorId, concerns, consultationD
   return { id: result.lastID, patientId, doctorId, status: 'pending', consultationDate: consultationDate || null, consultationTime: consultationTime || null, concerns, createdAt, updatedAt };
 }
 
+const ACTIVE_CONSULTATION_STATUS_SQL = `LOWER(TRIM(COALESCE(status, 'pending'))) NOT IN ('cancelled', 'denied', 'rejected', 'completed', 'finished', 'done', 'resolved', 'marked-no-show')`;
+
 async function countDoctorConsultationsForDate(doctorId, consultationDate, excludeConsultationId = null) {
   const conditions = [
     `doctor_id = ?`,
     `consultation_date = ?`,
-    `LOWER(TRIM(COALESCE(status, 'pending'))) NOT IN ('cancelled', 'denied', 'rejected', 'marked-no-show')`,
+    ACTIVE_CONSULTATION_STATUS_SQL,
   ];
   const params = [doctorId, consultationDate];
 
@@ -540,10 +542,52 @@ async function countDoctorConsultationsForDate(doctorId, consultationDate, exclu
   }
 
   const row = await get(
-    `SELECT COUNT(DISTINCT patient_id) AS count FROM consultations WHERE ${conditions.join(' AND ')}`,
+    `SELECT COUNT(*) AS count FROM consultations WHERE ${conditions.join(' AND ')}`,
     params
   );
   return Number(row?.count || 0);
+}
+
+async function countDoctorConsultationsForDateTime(doctorId, consultationDate, consultationTime, excludeConsultationId = null) {
+  if (!doctorId || !consultationDate || !consultationTime) return 0;
+
+  const conditions = [
+    `doctor_id = ?`,
+    `consultation_date = ?`,
+    `consultation_time = ?`,
+    ACTIVE_CONSULTATION_STATUS_SQL,
+  ];
+  const params = [doctorId, consultationDate, consultationTime];
+
+  if (excludeConsultationId) {
+    conditions.push(`id != ?`);
+    params.push(excludeConsultationId);
+  }
+
+  const row = await get(
+    `SELECT COUNT(*) AS count FROM consultations WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  return Number(row?.count || 0);
+}
+
+async function getActiveConsultationByPatient(patientId, excludeConsultationId = null) {
+  const conditions = [
+    `patient_id = ?`,
+    ACTIVE_CONSULTATION_STATUS_SQL,
+  ];
+  const params = [patientId];
+
+  if (excludeConsultationId) {
+    conditions.push(`id != ?`);
+    params.push(excludeConsultationId);
+  }
+
+  const row = await get(
+    `SELECT * FROM consultations WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT 1`,
+    params
+  );
+  return row || null;
 }
 
 async function getConsultationsByPatient(patientId) {
@@ -1417,6 +1461,8 @@ module.exports = {
   createPatientAssessment,
   createConsultation,
   countDoctorConsultationsForDate,
+  countDoctorConsultationsForDateTime,
+  getActiveConsultationByPatient,
   getConsultationsByPatient,
   getDoctorAvailability,
   createNotification,

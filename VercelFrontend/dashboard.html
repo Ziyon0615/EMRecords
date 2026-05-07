@@ -637,6 +637,40 @@
       margin-bottom: 1rem;
     }
 
+    .calendar-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+
+    .calendar-toolbar select,
+    .calendar-toolbar button {
+      min-height: 42px;
+      border-radius: 8px;
+      border: 1px solid #dbe4ef;
+      background: #fff;
+      color: #1a202c;
+      font-weight: 700;
+    }
+
+    .calendar-toolbar select {
+      min-width: min(260px, 100%);
+      padding: 0 0.75rem;
+    }
+
+    .calendar-toolbar button {
+      width: 42px;
+      cursor: pointer;
+    }
+
+    .calendar-toolbar button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
     .card {
       color: #1a202c;
     }
@@ -774,6 +808,14 @@
 
       .availability-calendar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .calendar-toolbar {
+        align-items: stretch;
+      }
+
+      .calendar-toolbar select {
+        flex: 1 1 100%;
       }
 
       .calendar-day {
@@ -973,6 +1015,11 @@
             <span><strong style="color:#22c55e;">Green</strong> available date</span>
             <span><strong style="color:#64748b;">Gray</strong> done / already past</span>
           </div>
+          <div class="calendar-toolbar">
+            <button type="button" id="availabilityPrevMonth" aria-label="Previous month">&lt;</button>
+            <select id="availabilityMonthSelect" aria-label="Select availability month"></select>
+            <button type="button" id="availabilityNextMonth" aria-label="Next month">&gt;</button>
+          </div>
           <div id="availabilityCalendar" class="availability-calendar"></div>
           <div id="availabilityList" class="card-list"></div>
         </div>
@@ -998,6 +1045,7 @@
       consultations: [],
       notifications: [],
       availability: [],
+      availabilityMonth: '',
       recordFiles: [],
     };
 
@@ -1016,6 +1064,10 @@
     const logoutBtn = document.getElementById('logoutBtn');
     const logoutSidebarBtn = document.getElementById('logoutSidebarBtn');
     const headerNotificationsBtn = document.getElementById('headerNotificationsBtn');
+    const notificationsCloseBtn = document.querySelector('#notificationsDropdown .dropdown-close');
+    const availabilityMonthSelect = document.getElementById('availabilityMonthSelect');
+    const availabilityPrevMonth = document.getElementById('availabilityPrevMonth');
+    const availabilityNextMonth = document.getElementById('availabilityNextMonth');
     const requestedDateInput = document.getElementById('requestedDate');
     if (requestedDateInput) {
       requestedDateInput.min = new Date().toISOString().slice(0, 10);
@@ -1025,6 +1077,9 @@
     if (requestedTimeInput) {
       requestedTimeInput.addEventListener('change', () => validateSelectedAvailability(true));
     }
+    availabilityMonthSelect?.addEventListener('change', (event) => setAvailabilityMonth(event.target.value));
+    availabilityPrevMonth?.addEventListener('click', () => moveAvailabilityMonth(-1));
+    availabilityNextMonth?.addEventListener('click', () => moveAvailabilityMonth(1));
 
     function setNotificationBellActive(active) {
       if (!headerNotificationsBtn) return;
@@ -1069,7 +1124,8 @@
       document.addEventListener('click', onClickOutside);
     }
 
-    function toggleNotificationsPanel() {
+    function toggleNotificationsPanel(event) {
+      event?.stopPropagation();
       const dropdown = document.getElementById('notificationsDropdown');
       if (!dropdown) return;
 
@@ -1089,8 +1145,13 @@
     });
 
     if (headerNotificationsBtn) {
-      headerNotificationsBtn.addEventListener('click', () => toggleNotificationsPanel());
+      headerNotificationsBtn.addEventListener('click', toggleNotificationsPanel);
     }
+
+    notificationsCloseBtn?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      closeNotificationsPanel();
+    });
 
     async function loadTabContent(target) {
       switch (target) {
@@ -1393,38 +1454,114 @@
         if (!data.success) throw new Error(data.message);
         
         overviewState.availability = data.availability || [];
+        syncAvailabilityMonthOptions();
         renderOverviewDoctors();
         renderAvailabilityCalendar(overviewState.availability);
-        
-        const list = document.getElementById('availabilityList');
-        if (!data.availability || data.availability.length === 0) {
-          list.innerHTML = '<p style="color: var(--muted);">No available doctors at this time.</p>';
-          return;
-        }
-        
-        const today = new Date().toISOString().slice(0, 10);
-        list.innerHTML = data.availability.map(a => {
-          const isPast = a.available_date < today;
-          return `
-          <div class="data-card" style="${isPast ? 'border-left-color:#94a3b8; opacity:0.72;' : 'border-left-color:#22c55e;'}">
-            <div class="data-row">
-              <div class="data-label">Doctor</div>
-              <div class="data-value">${a.doctor_name}</div>
-            </div>
-            <div class="data-row">
-              <div class="data-label">Date</div>
-              <div class="data-value">${a.available_date} ${isPast ? '(Done / Past)' : '(Available)'}</div>
-            </div>
-            <div class="data-row">
-              <div class="data-label">Available Slots</div>
-              <div class="data-value">${JSON.parse(a.available_time_slots).join(', ')}</div>
-            </div>
-          </div>
-        `;
-        }).join('');
+        renderAvailabilityList();
       } catch (err) {
         document.getElementById('availabilityList').innerHTML = `<p style="color: var(--danger);">Error loading availability: ${err.message}</p>`;
       }
+    }
+
+    function getAvailabilityMonthOptions(availability = overviewState.availability) {
+      const todayMonth = new Date().toISOString().slice(0, 7);
+      const months = new Set([todayMonth]);
+
+      (availability || []).forEach(item => {
+        if (item.available_date) {
+          months.add(item.available_date.slice(0, 7));
+        }
+      });
+
+      return Array.from(months).sort();
+    }
+
+    function formatMonthLabel(monthValue) {
+      const date = new Date(`${monthValue}-01T00:00:00`);
+      return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }
+
+    function syncAvailabilityMonthOptions() {
+      const months = getAvailabilityMonthOptions();
+      const today = new Date().toISOString().slice(0, 10);
+      const upcomingMonth = (overviewState.availability || [])
+        .map(item => item.available_date)
+        .filter(date => date && date >= today)
+        .sort()[0]?.slice(0, 7);
+
+      if (!overviewState.availabilityMonth || !months.includes(overviewState.availabilityMonth)) {
+        overviewState.availabilityMonth = upcomingMonth || months[0] || today.slice(0, 7);
+      }
+
+      if (availabilityMonthSelect) {
+        availabilityMonthSelect.innerHTML = months
+          .map(month => `<option value="${month}">${formatMonthLabel(month)}</option>`)
+          .join('');
+        availabilityMonthSelect.value = overviewState.availabilityMonth;
+      }
+
+      updateAvailabilityMonthButtons(months);
+    }
+
+    function updateAvailabilityMonthButtons(months = getAvailabilityMonthOptions()) {
+      const index = months.indexOf(overviewState.availabilityMonth);
+      if (availabilityPrevMonth) availabilityPrevMonth.disabled = index <= 0;
+      if (availabilityNextMonth) availabilityNextMonth.disabled = index === -1 || index >= months.length - 1;
+    }
+
+    function setAvailabilityMonth(monthValue) {
+      if (!monthValue) return;
+      overviewState.availabilityMonth = monthValue;
+      if (availabilityMonthSelect) availabilityMonthSelect.value = monthValue;
+      updateAvailabilityMonthButtons();
+      renderAvailabilityCalendar(overviewState.availability);
+      renderAvailabilityList();
+    }
+
+    function moveAvailabilityMonth(direction) {
+      const months = getAvailabilityMonthOptions();
+      const index = months.indexOf(overviewState.availabilityMonth);
+      const nextMonth = months[index + direction];
+      if (nextMonth) setAvailabilityMonth(nextMonth);
+    }
+
+    function renderAvailabilityList() {
+      const list = document.getElementById('availabilityList');
+      if (!list) return;
+
+      const availability = (overviewState.availability || [])
+        .filter(item => !overviewState.availabilityMonth || item.available_date?.slice(0, 7) === overviewState.availabilityMonth);
+
+      if (!overviewState.availability.length) {
+        list.innerHTML = '<p style="color: var(--muted);">No available doctors at this time.</p>';
+        return;
+      }
+
+      if (!availability.length) {
+        list.innerHTML = `<p style="color: var(--muted);">No doctor availability for ${formatMonthLabel(overviewState.availabilityMonth)}.</p>`;
+        return;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      list.innerHTML = availability.map(a => {
+        const isPast = a.available_date < today;
+        return `
+        <div class="data-card" style="${isPast ? 'border-left-color:#94a3b8; opacity:0.72;' : 'border-left-color:#22c55e;'}">
+          <div class="data-row">
+            <div class="data-label">Doctor</div>
+            <div class="data-value">${a.doctor_name}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Date</div>
+            <div class="data-value">${a.available_date} ${isPast ? '(Done / Past)' : '(Available)'}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Available Slots</div>
+            <div class="data-value">${JSON.parse(a.available_time_slots).join(', ')}</div>
+          </div>
+        </div>
+      `;
+      }).join('');
     }
 
     function getAvailabilityForSelection(date, time) {
@@ -1478,7 +1615,10 @@
       }, {});
 
       const visibleDates = Object.keys(byDate).sort();
-      const anchor = visibleDates.find(date => date >= today) || visibleDates[0] || today;
+      if (!overviewState.availabilityMonth) {
+        overviewState.availabilityMonth = visibleDates.find(date => date >= today)?.slice(0, 7) || visibleDates[0]?.slice(0, 7) || today.slice(0, 7);
+      }
+      const anchor = `${overviewState.availabilityMonth}-01`;
       const monthStart = new Date(`${anchor.slice(0, 7)}-01T00:00:00`);
       const firstDay = monthStart.getDay();
       const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();

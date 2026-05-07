@@ -44,6 +44,17 @@ async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeCo
   }
 }
 
+async function ensureDoctorSlotAvailable({ doctorId, consultationDate, consultationTime, excludeConsultationId = null }) {
+  if (!doctorId || !consultationDate || !consultationTime) return;
+
+  const bookedCount = await db.countDoctorConsultationsForDateTime(doctorId, consultationDate, consultationTime, excludeConsultationId);
+  if (bookedCount > 0) {
+    const error = new Error('This doctor already has a patient booked for that date and time. Please choose another slot.');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 async function notifyOverduePendingConsultations(today = getLocalDateString()) {
   const overdue = await db.getOverduePendingConsultations(today);
   for (const consultation of overdue) {
@@ -269,19 +280,26 @@ app.post('/api/consultation-request', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only patients can submit consultation requests.' });
     }
 
-    const doctor = await db.getDoctorUser();
-    if (!doctor) {
-      return res.status(500).json({ success: false, message: 'No doctor available.' });
-    }
-
     const today = getLocalDateString();
     if (consultationDate && consultationDate < today) {
       return res.status(400).json({ success: false, message: 'Consultation date cannot be in the past.' });
     }
 
+    const activeConsultation = await db.getActiveConsultationByPatient(userId);
+    if (activeConsultation) {
+      const activeSchedule = activeConsultation.consultation_date
+        ? ` for ${activeConsultation.consultation_date}${activeConsultation.consultation_time ? ` at ${activeConsultation.consultation_time}` : ''}`
+        : '';
+      return res.status(400).json({
+        success: false,
+        message: `You already have an active consultation request${activeSchedule}. Please cancel or complete it before booking another consultation.`,
+      });
+    }
+
+    let doctor = null;
     if (consultationDate) {
       const availability = await db.getDoctorAvailability();
-      const hasAvailableDoctor = availability.some((slot) => {
+      const availableDoctors = availability.filter((slot) => {
         if (slot.available_date !== consultationDate) return false;
         if (slot.available_date < today) return false;
         const slots = typeof slot.available_time_slots === 'string'
@@ -290,15 +308,38 @@ app.post('/api/consultation-request', async (req, res) => {
         return !consultationTime || slots.includes(consultationTime);
       });
 
-      if (!hasAvailableDoctor) {
+      if (!availableDoctors.length) {
         return res.status(400).json({
           success: false,
           message: 'There is no available doctor schedule for the date/time you selected. Please choose a green available date from the calendar.',
         });
       }
 
-      await ensureDoctorDailyCapacity({ doctorId: doctor.id, consultationDate });
+      for (const availableDoctor of availableDoctors) {
+        const dailyCount = await db.countDoctorConsultationsForDate(availableDoctor.doctor_id, consultationDate);
+        const slotCount = await db.countDoctorConsultationsForDateTime(availableDoctor.doctor_id, consultationDate, consultationTime);
+        if (dailyCount < MAX_DOCTOR_CONSULTATIONS_PER_DAY && slotCount === 0) {
+          doctor = await db.getUserById(availableDoctor.doctor_id);
+          break;
+        }
+      }
+
+      if (!doctor) {
+        return res.status(400).json({
+          success: false,
+          message: `The selected date/time is already fully booked. Each doctor can accommodate up to ${MAX_DOCTOR_CONSULTATIONS_PER_DAY} patients per day.`,
+        });
+      }
+    } else {
+      doctor = await db.getDoctorUser();
     }
+
+    if (!doctor) {
+      return res.status(500).json({ success: false, message: 'No doctor available.' });
+    }
+
+    await ensureDoctorDailyCapacity({ doctorId: doctor.id, consultationDate });
+    await ensureDoctorSlotAvailable({ doctorId: doctor.id, consultationDate, consultationTime });
 
     const consultation = await db.createConsultation({ patientId: userId, doctorId: doctor.id, concerns, consultationDate, consultationTime });
     // Create notification for patient
@@ -877,6 +918,12 @@ app.put('/api/consultations/:id/schedule', async (req, res) => {
     await ensureDoctorDailyCapacity({
       doctorId: targetDoctorId,
       consultationDate,
+      excludeConsultationId: consultationId,
+    });
+    await ensureDoctorSlotAvailable({
+      doctorId: targetDoctorId,
+      consultationDate,
+      consultationTime,
       excludeConsultationId: consultationId,
     });
 
@@ -3568,6 +3615,12 @@ app.put('/api/doctor/consultation/:id', async (req, res) => {
       await ensureDoctorDailyCapacity({
         doctorId: userId,
         consultationDate: targetDate,
+        excludeConsultationId: consultationId,
+      });
+      await ensureDoctorSlotAvailable({
+        doctorId: userId,
+        consultationDate: targetDate,
+        consultationTime: consultationTime || existingConsultation.consultation_time,
         excludeConsultationId: consultationId,
       });
     }
