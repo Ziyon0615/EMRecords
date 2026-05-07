@@ -1394,7 +1394,9 @@ app.get('/api/admin/emr-records', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only admins may view EMR records.' });
     }
 
-    const records = await db.getAllEMRRecords();
+    const records = await db.getAllEMRRecords({
+      search: req.query.search,
+    });
     
     // CP-ABE: Mark that assessment data is encrypted for admins
     const processedRecords = records.map(record => {
@@ -1454,7 +1456,10 @@ app.get('/api/admin/consultations', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only admins may view consultations.' });
     }
 
-    const consultations = await db.getAllConsultations();
+    const consultations = await db.getAllConsultations({
+      status: req.query.status,
+      date: req.query.date,
+    });
     return res.json({ success: true, consultations });
   } catch (err) {
     console.error('admin consultations error', err);

@@ -995,6 +995,12 @@ async function getPatientRecordFileById(fileId) {
 
 async function getAdminStats() {
   const totalUsers = (await get(`SELECT COUNT(*) AS count FROM users`)).count || 0;
+  const activeDoctors = (await get(`
+    SELECT COUNT(DISTINCT id) AS count
+    FROM users
+    WHERE LOWER(TRIM(role)) = 'doctor'
+      AND LOWER(COALESCE(NULLIF(TRIM(status), ''), 'active')) <> 'inactive'
+  `)).count || 0;
   const activeConsultations = (await get(`SELECT COUNT(*) AS count FROM consultations WHERE status IN ('pending', 'scheduled', 'under-review')`)).count || 0;
   const totalConsultations = (await get(`SELECT COUNT(*) AS count FROM consultations`)).count || 0;
   const emrRecords = (await get(`SELECT COUNT(*) AS count FROM patient_assessments`)).count || 0;
@@ -1002,6 +1008,7 @@ async function getAdminStats() {
 
   return {
     totalUsers,
+    activeDoctors,
     activeConsultations,
     totalConsultations,
     emrRecords,
@@ -1129,7 +1136,23 @@ async function getAdminReportData() {
   };
 }
 
-async function getAllEMRRecords() {
+async function getAllEMRRecords({ search } = {}) {
+  const conditions = [];
+  const params = [];
+
+  if (search) {
+    const normalizedSearchId = String(search).replace(/^#?(PT|EMR)/i, '').replace(/^0+/, '') || search;
+    conditions.push(`(
+      p.first_name ILIKE ?
+      OR p.last_name ILIKE ?
+      OR CONCAT(p.first_name, ' ', p.last_name) ILIKE ?
+      OR CAST(p.user_id AS TEXT) = ?
+      OR CAST(pa.id AS TEXT) = ?
+    )`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, normalizedSearchId, normalizedSearchId);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = await getAll(`
     SELECT 
       pa.id,
@@ -1140,8 +1163,9 @@ async function getAllEMRRecords() {
       pa.created_at
     FROM patient_assessments pa
     JOIN patients p ON pa.user_id = p.user_id
+    ${where}
     ORDER BY pa.created_at DESC
-  `);
+  `, params);
   return rows || [];
 }
 
@@ -1204,7 +1228,21 @@ async function getDiagnosticReportData(doctorId) {
   };
 }
 
-async function getAllConsultations() {
+async function getAllConsultations({ status, date } = {}) {
+  const conditions = [];
+  const params = [];
+
+  if (status) {
+    conditions.push(`LOWER(c.status) = LOWER(?)`);
+    params.push(status);
+  }
+
+  if (date) {
+    conditions.push(`COALESCE(c.consultation_date, substr(c.created_at, 1, 10)) = ?`);
+    params.push(date);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = await getAll(`
     SELECT 
       c.id,
@@ -1220,8 +1258,9 @@ async function getAllConsultations() {
     FROM consultations c
     LEFT JOIN users pu ON c.patient_id = pu.id
     LEFT JOIN users du ON c.doctor_id = du.id
+    ${where}
     ORDER BY c.created_at DESC
-  `);
+  `, params);
   return rows || [];
 }
 

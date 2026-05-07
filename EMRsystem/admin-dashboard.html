@@ -1451,8 +1451,8 @@
               </select>
             </div>
             <div class="filter-field">
-              <label>Login Date</label>
-              <input type="date" />
+              <label>Consultation Date</label>
+              <input type="date" id="consultationDateFilter" />
             </div>
           </div>
 
@@ -1477,7 +1477,7 @@
           <div class="filter-group">
             <div class="filter-field">
               <label>Search Patient</label>
-              <input type="text" placeholder="Patient name or ID..." />
+              <input type="text" id="emrPatientSearchInput" placeholder="Patient name or ID..." />
             </div>
           </div>
 
@@ -1864,7 +1864,7 @@
         if (!data.success) throw new Error(data.message || 'Failed to fetch stats');
 
         document.getElementById('statTotalUsers').textContent = data.stats.totalUsers.toLocaleString();
-        document.getElementById('statActiveDoctors').textContent = Math.max(0, (data.stats.totalUsers || 1) - 2).toLocaleString();
+        document.getElementById('statActiveDoctors').textContent = (data.stats.activeDoctors || 0).toLocaleString();
         document.getElementById('statPendingConsultations').textContent = data.stats.activeConsultations?.toLocaleString() || '0';
         document.getElementById('statProtectedEmrs').textContent = data.stats.emrRecords?.toLocaleString() || '0';
 
@@ -2025,6 +2025,9 @@
     const statusFilter = document.getElementById('statusFilter');
     const auditRoleFilter = document.getElementById('auditRoleFilter');
     const auditDateFilter = document.getElementById('auditDateFilter');
+    const consultationStatusFilter = document.getElementById('consultationStatusFilter');
+    const consultationDateFilter = document.getElementById('consultationDateFilter');
+    const emrPatientSearchInput = document.getElementById('emrPatientSearchInput');
     const passwordResetStatusFilter = document.getElementById('passwordResetStatusFilter');
     const adminAddUserForm = document.getElementById('adminAddUserForm');
     const reportButtons = document.querySelectorAll('[data-report-type]');
@@ -2231,8 +2234,13 @@
       const table = document.getElementById('emrTableBody');
       table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">Loading EMR records…</div>';
 
+      const query = new URLSearchParams({
+        userId: authUser.id,
+        ...(emrPatientSearchInput?.value.trim() ? { search: emrPatientSearchInput.value.trim() } : {}),
+      });
+
       try {
-        const resp = await fetch(`${API_BASE_URL}/api/admin/emr-records?userId=${authUser.id}`);
+        const resp = await fetch(`${API_BASE_URL}/api/admin/emr-records?${query.toString()}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || 'Failed to fetch EMR records');
 
@@ -2306,8 +2314,14 @@
       const table = document.getElementById('consultationsTableBody');
       table.innerHTML = '<div class="admin-table-row" style="justify-content:center;">Loading consultations…</div>';
 
+      const query = new URLSearchParams({
+        userId: authUser.id,
+        ...(consultationStatusFilter?.value ? { status: consultationStatusFilter.value } : {}),
+        ...(consultationDateFilter?.value ? { date: consultationDateFilter.value } : {}),
+      });
+
       try {
-        const resp = await fetch(`${API_BASE_URL}/api/admin/consultations?userId=${authUser.id}`);
+        const resp = await fetch(`${API_BASE_URL}/api/admin/consultations?${query.toString()}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || 'Failed to fetch consultations');
 
@@ -2994,6 +3008,9 @@
     userSearchInput.addEventListener('input', () => loadUsers());
     roleFilter.addEventListener('change', () => loadUsers());
     statusFilter.addEventListener('change', () => loadUsers());
+    consultationStatusFilter?.addEventListener('change', () => loadConsultations());
+    consultationDateFilter?.addEventListener('change', () => loadConsultations());
+    emrPatientSearchInput?.addEventListener('input', () => loadEMRRecords());
     auditRoleFilter?.addEventListener('change', () => loadAuditLogs());
     auditDateFilter?.addEventListener('change', () => loadAuditLogs());
     passwordResetStatusFilter?.addEventListener('change', () => loadPasswordResetRequests());
