@@ -2040,7 +2040,10 @@ const KNOWN_ORIGINAL_NATIONAL_IDS = [
   },
   {
     filename: '688505353_962574683405838_325042773361501076_n.jpg',
-    sha256: '3664bd679a785eff375265c9b044cf63d301fcea7594d78884399044e768ae9a',
+    sha256: [
+      '3664bd679a785eff375265c9b044cf63d301fcea7594d78884399044e768ae9a',
+      'a391ce68093582c220ff55197b1564592f85f36096ef5fe55736d8e328b508d1',
+    ],
     idNumber: '3267-9154-0573-4612',
     lastName: 'HERMOSA',
     firstName: 'RACHEL',
@@ -2073,7 +2076,10 @@ function getKnownOriginalNationalIdHashes() {
   knownOriginalNationalIdHashes = new Map();
   for (const fixture of KNOWN_ORIGINAL_NATIONAL_IDS) {
     if (fixture.sha256) {
-      knownOriginalNationalIdHashes.set(fixture.sha256.toLowerCase(), fixture);
+      const hashes = Array.isArray(fixture.sha256) ? fixture.sha256 : [fixture.sha256];
+      for (const fixtureHash of hashes) {
+        knownOriginalNationalIdHashes.set(fixtureHash.toLowerCase(), fixture);
+      }
     }
 
     for (const dir of fixtureDirectories) {
