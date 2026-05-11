@@ -28,7 +28,7 @@
 [ ] /api/reschedule-request (patient workflow) 
 [ ] /api/cancel-appointment (48hr notice)
 [ ] /api/late-fee-check (consultations.is_late)
-[ ] message_board endpoints (secure comms)
+[ ] message_board endpoints (protected comms)
 ```
 
 ## **⏳ STEP 4: Frontend Scheduling UI** (0/4 ⏳)

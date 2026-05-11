@@ -10,7 +10,7 @@ const pool = new Pool({
 });
 
 // CP-ABE Encryption Configuration
-const MASTER_KEY = crypto.randomBytes(32); // In production, this should be securely stored
+const MASTER_KEY = crypto.randomBytes(32); // In production, this should be safely stored
 const ALGORITHM = 'aes-256-gcm';
 
 // Generate encryption key for a patient
