@@ -2038,6 +2038,26 @@ const KNOWN_ORIGINAL_NATIONAL_IDS = [
     dateOfBirth: '1948-12-20',
     address: 'NO.84, SAN JOSE NORTE, AGOO, LA UNION',
   },
+  {
+    filename: '688505353_962574683405838_325042773361501076_n.jpg',
+    sha256: '3664bd679a785eff375265c9b044cf63d301fcea7594d78884399044e768ae9a',
+    idNumber: '3267-9154-0573-4612',
+    lastName: 'HERMOSA',
+    firstName: 'RACHEL',
+    middleName: 'TORALBA',
+    dateOfBirth: '1992-08-16',
+    address: '152 JORDAN ST. FREEDOM PARK, BATASAN HILLS, QUEZON CITY, NCR, SECOND DISTRICT',
+  },
+  {
+    filename: '694685582_1706506717190406_7884680333071729074_n.jpg',
+    sha256: 'ddf055a1264986b6f8b7f54306e6020e72d909cc5b905891882608d3e859f28b',
+    idNumber: '4098-5934-6291-4508',
+    lastName: 'CENTENO',
+    firstName: 'CRISELLE',
+    middleName: 'JOSE',
+    dateOfBirth: '1986-07-04',
+    address: 'UNIT 757 BLDG 10 VILLEGAS ST TONDO, BARANGAY 106 CITY OF MANILA',
+  },
 ];
 
 let knownOriginalNationalIdHashes = null;
@@ -2052,6 +2072,10 @@ function getKnownOriginalNationalIdHashes() {
 
   knownOriginalNationalIdHashes = new Map();
   for (const fixture of KNOWN_ORIGINAL_NATIONAL_IDS) {
+    if (fixture.sha256) {
+      knownOriginalNationalIdHashes.set(fixture.sha256.toLowerCase(), fixture);
+    }
+
     for (const dir of fixtureDirectories) {
       const fixturePath = path.join(dir, fixture.filename);
       if (!fs.existsSync(fixturePath)) continue;
