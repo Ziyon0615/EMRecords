@@ -2,7 +2,10 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const outDir = path.resolve(root, '..', 'VercelFrontend');
+const outDirs = [
+  { dir: path.resolve(root, 'dist'), clean: true },
+  { dir: path.resolve(root, '..', 'VercelFrontend'), clean: false },
+];
 const staticFiles = [
   'admin-dashboard.html',
   'admin.html',
@@ -24,27 +27,33 @@ const staticFiles = [
   'styles.css',
 ];
 
-fs.rmSync(outDir, { recursive: true, force: true });
-fs.mkdirSync(outDir, { recursive: true });
+const staticVercelConfig = {
+  buildCommand: 'npm run build',
+  outputDirectory: 'dist',
+  cleanUrls: true,
+  rewrites: [{ source: '/', destination: '/index.html' }],
+  headers: [
+    {
+      source: '/(.*)',
+      headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
+    },
+  ],
+};
 
-for (const file of staticFiles) {
-  fs.copyFileSync(path.join(root, file), path.join(outDir, file));
+for (const { dir: outDir, clean } of outDirs) {
+  if (clean) fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+
+  for (const file of staticFiles) {
+    fs.copyFileSync(path.join(root, file), path.join(outDir, file));
+  }
+
+  fs.copyFileSync(path.join(root, 'app.js'), path.join(outDir, 'auth-client.js'));
+
+  fs.writeFileSync(
+    path.join(outDir, 'vercel.json'),
+    `${JSON.stringify(staticVercelConfig, null, 2)}\n`
+  );
+
+  console.log(`Copied ${staticFiles.length} static files to ${outDir}`);
 }
-
-fs.copyFileSync(path.join(root, 'app.js'), path.join(outDir, 'auth-client.js'));
-
-fs.writeFileSync(
-  path.join(outDir, 'vercel.json'),
-  `${JSON.stringify({
-    cleanUrls: true,
-    rewrites: [{ source: '/', destination: '/index.html' }],
-    headers: [
-      {
-        source: '/(.*)',
-        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
-      },
-    ],
-  }, null, 2)}\n`
-);
-
-console.log(`Copied ${staticFiles.length} static files to ${outDir}`);
