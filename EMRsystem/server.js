@@ -68,8 +68,9 @@ function generateOtp() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
-async function sendOtpEmail(email, otp) {
+async function sendOtpEmail(email, otp, loginUrl = '') {
   const expiresIn = '10 minutes';
+  const loginLine = loginUrl ? `\nLogin and enter your OTP here: ${loginUrl}` : '';
   if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
     const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -81,7 +82,7 @@ async function sendOtpEmail(email, otp) {
         from: process.env.EMAIL_FROM,
         to: email,
         subject: 'Your EMR login OTP',
-        text: `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.`,
+        text: `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.${loginLine}`,
       }),
     });
     if (!resp.ok) {
@@ -93,6 +94,14 @@ async function sendOtpEmail(email, otp) {
 
   console.log(`[OTP] ${email}: ${otp} (expires in ${expiresIn}). Set RESEND_API_KEY and EMAIL_FROM to send real email.`);
   return { sent: false, devOtp: process.env.NODE_ENV === 'production' ? undefined : otp };
+}
+
+async function sendPatientApprovalOtp({ user, req }) {
+  const otp = generateOtp();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await db.createLoginOtp({ userId: user.id, email: user.email, otp, expiresAt });
+  const loginUrl = `${getFrontendUrl(req)}/login.html?otp=1`;
+  return sendOtpEmail(user.email, otp, loginUrl);
 }
 
 async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeConsultationId = null }) {
@@ -265,7 +274,14 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Staff position is required.' });
     }
 
-    const user = await db.createUser({ role, email, password, displayName });
+    const user = await db.createUser({
+      role,
+      email,
+      password,
+      displayName,
+      emailVerified: role !== 'patient',
+      status: role === 'patient' ? 'pending' : 'active',
+    });
 
     let patientProfile = null;
     let doctorProfile = null;
@@ -293,21 +309,17 @@ app.post('/api/register', async (req, res) => {
         securityAnswer,
       });
 
-      const otp = generateOtp();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      await db.createLoginOtp({ userId: user.id, email, otp, expiresAt });
-      let emailResult;
-      try {
-        emailResult = await sendOtpEmail(email, otp);
-      } catch (emailErr) {
-        console.error('OTP email send error', emailErr);
-        return res.status(502).json({
-          success: false,
-          message: 'Account was created, but OTP email could not be sent. Please ask the administrator to check the email sender setup.',
-        });
-      }
-      patientProfile.otpEmailSent = emailResult.sent;
-      if (emailResult.devOtp) patientProfile.devOtp = emailResult.devOtp;
+      const admins = await db.getAllUsers({ role: 'admin', status: 'active' });
+      await Promise.all(
+        admins.map((adminUser) =>
+          db.createNotification({
+            userId: adminUser.id,
+            targetUserId: user.id,
+            type: 'patient_registration_pending',
+            message: `${displayName || email} submitted a new patient registration for approval.`,
+          })
+        )
+      );
 
       if (invite) {
         await db.markInviteUsed(invite.token);
@@ -335,7 +347,16 @@ app.post('/api/register', async (req, res) => {
       resource: 'User Management',
       details: `Created ${role} account ${email}.`,
     });
-    return res.status(201).json({ success: true, user, patientProfile, doctorProfile, staffProfile });
+    return res.status(201).json({
+      success: true,
+      user,
+      patientProfile,
+      doctorProfile,
+      staffProfile,
+      message: role === 'patient'
+        ? 'Registration submitted. Please wait for admin approval. OTP will be sent to your email after approval.'
+        : undefined,
+    });
   } catch (err) {
     console.error('register error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
@@ -794,6 +815,12 @@ app.post('/api/login', async (req, res) => {
     }
 
     const account = await db.getUserByEmail(email);
+    if (account && account.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your registration is waiting for admin approval. OTP will be sent to your email after approval.',
+      });
+    }
     if (account && account.status && account.status !== 'active') {
       await writeAuditLog({
         userId: account.id,
@@ -1505,7 +1532,7 @@ app.post('/api/admin/users/:id/status', async (req, res) => {
       return res.status(400).json({ success: false, message: 'User ID and status are required.' });
     }
 
-    const allowed = ['active', 'inactive'];
+    const allowed = ['active', 'inactive', 'pending'];
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: `Status must be one of: ${allowed.join(', ')}` });
     }
@@ -1518,6 +1545,20 @@ app.post('/api/admin/users/:id/status', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Admin accounts cannot be activated or deactivated from this screen.' });
     }
 
+    let otpEmailSent = false;
+    if (status === 'active' && target.role === 'patient' && Number(target.email_verified || 0) !== 1) {
+      try {
+        const emailResult = await sendPatientApprovalOtp({ user: target, req });
+        otpEmailSent = Boolean(emailResult.sent);
+      } catch (emailErr) {
+        console.error('Patient approval OTP email error', emailErr);
+        return res.status(502).json({
+          success: false,
+          message: 'Could not approve account because the OTP email failed to send. Please check the email sender setup.',
+        });
+      }
+    }
+
     await db.updateUserStatus(targetUserId, status);
     const updatedUser = await db.getUserById(targetUserId);
     await writeAuditLog({
@@ -1525,9 +1566,9 @@ app.post('/api/admin/users/:id/status', async (req, res) => {
       userRole: user.role,
       action: 'update',
       resource: 'User Status',
-      details: `Set ${target.email} to ${status}.`,
+      details: `Set ${target.email} to ${status}${otpEmailSent ? ' and sent OTP.' : ''}.`,
     });
-    return res.json({ success: true, user: updatedUser });
+    return res.json({ success: true, user: updatedUser, otpEmailSent });
   } catch (err) {
     console.error('admin user status update error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });

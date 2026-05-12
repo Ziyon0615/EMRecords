@@ -721,13 +721,8 @@
 
         registrationSubmitted = true;
 
-        if (data.patientProfile?.devOtp) {
-          alert(`Registration successful. OTP was generated for development: ${data.patientProfile.devOtp}`);
-        } else {
-          alert('Registration successful. Please check your email for the OTP, then login.');
-        }
-        localStorage.setItem('pendingOtpEmail', email);
-        window.location.href = 'login.html?otp=1';
+        alert(data.message || 'Registration submitted. Please wait for admin approval. OTP will be sent to your email after approval.');
+        window.location.href = 'login.html';
       } catch (err) {
         console.error('[REGISTER ERROR]', err);
         const message = err.message || 'Internal server error.';

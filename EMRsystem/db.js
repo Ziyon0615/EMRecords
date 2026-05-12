@@ -372,14 +372,14 @@ await run(`
   `);
 }
 
-async function createUser({ role, email, password, displayName, emailVerified = true }) {
+async function createUser({ role, email, password, displayName, emailVerified = true, status = 'active' }) {
   const passwordHash = await bcrypt.hash(password, 10);
   const createdAt = new Date().toISOString();
   const verifiedValue = emailVerified ? 1 : 0;
 
   const result = await run(
     `INSERT INTO users (role, email, password_hash, display_name, status, email_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [role, email.toLowerCase(), passwordHash, displayName || null, 'active', verifiedValue, createdAt]
+    [role, email.toLowerCase(), passwordHash, displayName || null, status, verifiedValue, createdAt]
   );
 
   return {
@@ -387,7 +387,7 @@ async function createUser({ role, email, password, displayName, emailVerified = 
     role,
     email: email.toLowerCase(),
     displayName: displayName || null,
-    status: 'active',
+    status,
     emailVerified: verifiedValue,
     createdAt,
   };

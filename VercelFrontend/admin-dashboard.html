@@ -1615,6 +1615,7 @@
               <label>Status Filter</label>
               <select id="statusFilter">
                 <option value="">All Status</option>
+                <option value="pending">Pending</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -2522,12 +2523,19 @@
 
         table.innerHTML = data.users
           .map(u => {
-            const statusClass = u.status === 'inactive' ? 'status-inactive' : 'status-active';
+            const statusClass = u.status === 'pending' ? 'status-pending' : u.status === 'inactive' ? 'status-inactive' : 'status-active';
             const statusLabel = u.status ? u.status.toUpperCase() : 'ACTIVE';
             const toggleLabel = u.status === 'inactive' ? 'Reactivate' : 'Deactivate';
             const isAdminAccount = u.role === 'admin';
             const actions = isAdminAccount
               ? '<span style="color: var(--text-secondary); font-size: 0.85rem;">Protected admin</span>'
+              : u.status === 'pending'
+                ? `
+              <button class="action-btn view" data-action="view" data-user-id="${u.id}">View</button>
+              <button class="action-btn edit" data-action="approve" data-user-id="${u.id}">Approve</button>
+              <button class="action-btn delete" data-action="reject" data-user-id="${u.id}">Reject</button>
+              <button class="action-btn delete" data-action="delete" data-user-id="${u.id}">Delete</button>
+            `
               : `
               <button class="action-btn view" data-action="view" data-user-id="${u.id}">View</button>
               <button class="action-btn edit" data-action="edit" data-user-id="${u.id}">Edit</button>
@@ -2564,6 +2572,12 @@
             }
             if (action === 'toggle') {
               await toggleUserStatus(targetId);
+            }
+            if (action === 'approve') {
+              await updatePendingUserStatus(targetId, 'active');
+            }
+            if (action === 'reject') {
+              await updatePendingUserStatus(targetId, 'inactive');
             }
             if (action === 'delete') {
               await deleteUser(targetId);
@@ -3253,6 +3267,31 @@
       } catch (err) {
         console.error('Toggle status error', err);
         alert('Failed to update status: ' + err.message);
+      }
+    }
+
+    async function updatePendingUserStatus(userId, targetStatus) {
+      try {
+        const actionText = targetStatus === 'active' ? 'approve this registration and send OTP' : 'reject this registration';
+        const confirmed = confirm(`Are you sure you want to ${actionText}?`);
+        if (!confirmed) return;
+
+        const updateResp = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/status?userId=${authUser.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: targetStatus }),
+        });
+        const updateData = await updateResp.json();
+        if (!updateResp.ok || !updateData.success) throw new Error(updateData.message || 'Failed to update registration status.');
+
+        await loadUsers();
+        await loadAdminNotifications();
+        alert(targetStatus === 'active'
+          ? 'Registration approved. OTP was sent to the user email.'
+          : 'Registration rejected.');
+      } catch (err) {
+        console.error('Pending user status error', err);
+        alert('Failed to update registration: ' + err.message);
       }
     }
 
