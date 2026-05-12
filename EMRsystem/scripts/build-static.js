@@ -28,14 +28,25 @@ const staticFiles = [
 ];
 
 const staticVercelConfig = {
-  buildCommand: 'npm run build',
-  outputDirectory: 'dist',
-  cleanUrls: true,
-  rewrites: [{ source: '/', destination: '/index.html' }],
-  headers: [
+  version: 2,
+  builds: [
     {
-      source: '/(.*)',
-      headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
+      src: '**/*',
+      use: '@vercel/static',
+    },
+  ],
+  cleanUrls: true,
+  routes: [
+    {
+      src: '/',
+      dest: '/index.html',
+    },
+    {
+      src: '/(.*)',
+      headers: {
+        'Cache-Control': 'public, max-age=0, must-revalidate',
+      },
+      continue: true,
     },
   ],
 };

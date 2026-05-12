@@ -225,6 +225,15 @@
         return;
       }
 
+      if (localStorage.getItem('pendingOtpEmail') === email && !otp) {
+        showOtpField();
+        formHint.textContent = 'Please enter the OTP sent after registration before logging in.';
+        formHint.style.color = '#ef4444';
+        formHint.style.display = 'block';
+        otpInput.focus();
+        return;
+      }
+
       try {
         const response = await fetch('/api/login', {
           method: 'POST',

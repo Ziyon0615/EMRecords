@@ -14,6 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
+const APP_RELEASE = 'otp-email-verification-v2';
 const MAX_RECORD_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_RECORD_FILE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 const MAX_DOCTOR_CONSULTATIONS_PER_DAY = 10;
@@ -4074,7 +4075,12 @@ app.get('/api/doctor/patient/:patientUserId/consultations', async (req, res) => 
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, status: 'ok' });
+  res.json({
+    success: true,
+    status: 'ok',
+    release: APP_RELEASE,
+    otpEmailConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
+  });
 });
 
 if (require.main === module) {
