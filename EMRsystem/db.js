@@ -1028,9 +1028,11 @@ async function resolvePasswordResetRequest(requestId, adminId) {
 }
 
 async function deleteUserCascade(userId) {
+  await run(`DELETE FROM login_otps WHERE user_id = ?`, [userId]);
   await run(`DELETE FROM message_board WHERE from_user_id = ? OR to_user_id = ?`, [userId, userId]);
   await run(`DELETE FROM reschedule_requests WHERE patient_id = ? OR doctor_id = ?`, [userId, userId]);
-  await run(`DELETE FROM notifications WHERE user_id = ?`, [userId]);
+  await run(`DELETE FROM notifications WHERE user_id = ? OR target_user_id = ?`, [userId, userId]);
+  await run(`DELETE FROM password_reset_requests WHERE user_id = ? OR resolved_by = ?`, [userId, userId]);
   await run(`DELETE FROM audit_logs WHERE user_id = ?`, [userId]);
   await run(`DELETE FROM doctor_availability WHERE doctor_id = ?`, [userId]);
   await run(`DELETE FROM consultations WHERE patient_id = ? OR doctor_id = ?`, [userId, userId]);
