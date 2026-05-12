@@ -296,7 +296,16 @@ app.post('/api/register', async (req, res) => {
       const otp = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       await db.createLoginOtp({ userId: user.id, email, otp, expiresAt });
-      const emailResult = await sendOtpEmail(email, otp);
+      let emailResult;
+      try {
+        emailResult = await sendOtpEmail(email, otp);
+      } catch (emailErr) {
+        console.error('OTP email send error', emailErr);
+        return res.status(502).json({
+          success: false,
+          message: 'Account was created, but OTP email could not be sent. Please ask the administrator to check the email sender setup.',
+        });
+      }
       patientProfile.otpEmailSent = emailResult.sent;
       if (emailResult.devOtp) patientProfile.devOtp = emailResult.devOtp;
 
