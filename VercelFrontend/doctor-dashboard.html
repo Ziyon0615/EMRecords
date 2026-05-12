@@ -1043,7 +1043,21 @@
     <section id="patient-records" class="section">
       <div class="card">
         <h2>Patient Records</h2>
-        <p style="color:#666;">Select a patient from the consultation list to view their record.</p>
+        <p style="color:#666;">Select a patient from the consultation list or scan their QR code to view their record.</p>
+        <div class="data-card" style="margin-bottom: 1rem;">
+          <h3 style="margin-top: 0;">Scan Patient QR</h3>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end;">
+            <div class="field" style="flex: 1; min-width: 220px; margin: 0;">
+              <label for="patientQrInput">QR Code Text</label>
+              <input type="text" id="patientQrInput" placeholder="EMR-Patient:123" />
+            </div>
+            <button type="button" id="openQrPatientBtn" class="primary" style="width: auto;">Open Record</button>
+            <button type="button" id="startQrScanBtn" class="primary secondary-action" style="width: auto;">Use Camera</button>
+            <button type="button" id="stopQrScanBtn" class="primary secondary-action" style="width: auto; display: none;">Stop Camera</button>
+          </div>
+          <video id="qrScanVideo" style="display: none; width: 100%; max-width: 420px; margin-top: 1rem; border-radius: 8px;" muted playsinline></video>
+          <p id="qrScanHint" class="hint"></p>
+        </div>
         <p id="patientRecordsDebug" style="color:#666; font-size:0.9rem; margin:0 0 0.75rem 0;">Loading patients...</p>
         <div id="patientRecordsList" class="card-list"></div>
       </div>
@@ -1114,10 +1128,18 @@
       const logoutBtn = document.getElementById('logoutBtn');
       const headerNotificationsBtn = document.getElementById('headerNotificationsBtn');
       const searchInput = document.getElementById('searchPatient');
+      const patientQrInput = document.getElementById('patientQrInput');
+      const openQrPatientBtn = document.getElementById('openQrPatientBtn');
+      const startQrScanBtn = document.getElementById('startQrScanBtn');
+      const stopQrScanBtn = document.getElementById('stopQrScanBtn');
+      const qrScanVideo = document.getElementById('qrScanVideo');
+      const qrScanHint = document.getElementById('qrScanHint');
 
     const tabBtns = document.querySelectorAll('.tab-btn');
     let currentFilter = document.querySelector('.tab-btn.active')?.dataset.filter || 'pending';
     let searchQuery = '';
+    let qrScanStream = null;
+    let qrScanAnimationFrame = null;
 
     let selectedConsultationId = null;
     let consultationsData = [];
@@ -1269,7 +1291,12 @@
       switchSection('patient-records');
     });
 
+    openQrPatientBtn?.addEventListener('click', () => openPatientFromQrText(patientQrInput.value));
+    startQrScanBtn?.addEventListener('click', startQrScanner);
+    stopQrScanBtn?.addEventListener('click', stopQrScanner);
+
     logoutBtn.addEventListener('click', () => {
+      stopQrScanner();
       localStorage.removeItem('authUser');
       window.location.href = 'login.html';
     });
@@ -2163,6 +2190,86 @@
       container.innerHTML = html;
     }
 
+    function getPatientIdFromQrText(value) {
+      const text = String(value || '').trim();
+      const match = text.match(/^EMR-Patient:(\d+)$/i) || text.match(/^(\d+)$/);
+      return match ? Number(match[1]) : null;
+    }
+
+    async function openPatientFromQrText(value) {
+      const patientUserId = getPatientIdFromQrText(value);
+      if (!patientUserId) {
+        qrScanHint.textContent = 'Invalid patient QR code.';
+        qrScanHint.style.color = 'var(--danger)';
+        return;
+      }
+
+      qrScanHint.textContent = 'Opening patient record...';
+      qrScanHint.style.color = 'var(--muted)';
+      await stopQrScanner();
+      switchSection('patient-records');
+      await selectPatientForRecords(patientUserId);
+    }
+
+    async function stopQrScanner() {
+      if (qrScanAnimationFrame) {
+        cancelAnimationFrame(qrScanAnimationFrame);
+        qrScanAnimationFrame = null;
+      }
+      if (qrScanStream) {
+        qrScanStream.getTracks().forEach(track => track.stop());
+        qrScanStream = null;
+      }
+      if (qrScanVideo) {
+        qrScanVideo.srcObject = null;
+        qrScanVideo.style.display = 'none';
+      }
+      if (startQrScanBtn) startQrScanBtn.style.display = '';
+      if (stopQrScanBtn) stopQrScanBtn.style.display = 'none';
+    }
+
+    async function startQrScanner() {
+      if (!('BarcodeDetector' in window)) {
+        qrScanHint.textContent = 'Camera QR scanning is not supported in this browser. Type or paste the QR code text instead.';
+        qrScanHint.style.color = 'var(--danger)';
+        return;
+      }
+
+      try {
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        qrScanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        qrScanVideo.srcObject = qrScanStream;
+        qrScanVideo.style.display = 'block';
+        startQrScanBtn.style.display = 'none';
+        stopQrScanBtn.style.display = '';
+        qrScanHint.textContent = 'Point the camera at the patient QR code.';
+        qrScanHint.style.color = 'var(--muted)';
+        await qrScanVideo.play();
+
+        const scanFrame = async () => {
+          if (!qrScanStream) return;
+          try {
+            const codes = await detector.detect(qrScanVideo);
+            if (codes.length) {
+              const rawValue = codes[0].rawValue || '';
+              patientQrInput.value = rawValue;
+              await openPatientFromQrText(rawValue);
+              return;
+            }
+          } catch (err) {
+            console.warn('QR scan frame failed', err);
+          }
+          qrScanAnimationFrame = requestAnimationFrame(scanFrame);
+        };
+
+        scanFrame();
+      } catch (err) {
+        await stopQrScanner();
+        qrScanHint.textContent = `Could not start camera: ${err.message}`;
+        qrScanHint.style.color = 'var(--danger)';
+      }
+    }
+
     async function selectPatientForRecords(patientUserId) {
       selectedPatientId = patientUserId;
       try {
@@ -2288,8 +2395,12 @@
               <div class="data-value">${patient.sex}</div>
             </div>
             <div class="data-row">
-              <div class="data-label">Address</div>
+              <div class="data-label">Address 1</div>
               <div class="data-value">${patient.address}</div>
+            </div>
+            <div class="data-row">
+              <div class="data-label">Address 2</div>
+              <div class="data-value">${patient.address2 || 'None'}</div>
             </div>
 
             <h3 style="margin-top: 2rem;">Health Assessment Summary</h3>

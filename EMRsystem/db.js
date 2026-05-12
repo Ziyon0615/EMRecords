@@ -171,8 +171,10 @@ await run(`
       sex TEXT NOT NULL,
       civil_status TEXT NOT NULL,
       address TEXT NOT NULL,
+      address2 TEXT,
       philhealth_number TEXT,
       id_type TEXT,
+      national_id_number TEXT,
       disability TEXT,
       security_question TEXT NOT NULL,
       security_answer TEXT NOT NULL,
@@ -183,6 +185,22 @@ await run(`
 
   await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS disability TEXT;`);
   await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS id_type TEXT;`);
+  await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS address2 TEXT;`);
+  await run(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS national_id_number TEXT;`);
+  await run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1;`);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS login_otps (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
 
   await run(`
     CREATE TABLE IF NOT EXISTS patient_assessments (
@@ -354,13 +372,14 @@ await run(`
   `);
 }
 
-async function createUser({ role, email, password, displayName }) {
+async function createUser({ role, email, password, displayName, emailVerified = true }) {
   const passwordHash = await bcrypt.hash(password, 10);
   const createdAt = new Date().toISOString();
+  const verifiedValue = emailVerified ? 1 : 0;
 
   const result = await run(
-    `INSERT INTO users (role, email, password_hash, display_name, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [role, email.toLowerCase(), passwordHash, displayName || null, 'active', createdAt]
+    `INSERT INTO users (role, email, password_hash, display_name, status, email_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [role, email.toLowerCase(), passwordHash, displayName || null, 'active', verifiedValue, createdAt]
   );
 
   return {
@@ -369,6 +388,7 @@ async function createUser({ role, email, password, displayName }) {
     email: email.toLowerCase(),
     displayName: displayName || null,
     status: 'active',
+    emailVerified: verifiedValue,
     createdAt,
   };
 }
@@ -390,6 +410,40 @@ async function validateCredentials(email, password) {
 async function getUserById(id) {
   const row = await get(`SELECT * FROM users WHERE id = ?`, [id]);
   return row ? row : null;
+}
+
+function hashOtp(otp) {
+  return crypto.createHash('sha256').update(String(otp)).digest('hex');
+}
+
+async function createLoginOtp({ userId, email, otp, expiresAt }) {
+  const createdAt = new Date().toISOString();
+  await run(`UPDATE login_otps SET used = 1 WHERE user_id = ? AND used = 0`, [userId]);
+  const result = await run(
+    `INSERT INTO login_otps (user_id, email, otp_hash, expires_at, used, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
+    [userId, email.toLowerCase(), hashOtp(otp), expiresAt, createdAt]
+  );
+  return { id: result.lastID, userId, email: email.toLowerCase(), expiresAt, createdAt };
+}
+
+async function verifyLoginOtp({ userId, otp }) {
+  const row = await get(
+    `SELECT * FROM login_otps WHERE user_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1`,
+    [userId]
+  );
+  if (!row) return { ok: false, message: 'No OTP request found. Please login again to request a new OTP.' };
+  if (new Date(row.expires_at) < new Date()) {
+    return { ok: false, message: 'OTP expired. Please login again to request a new OTP.' };
+  }
+  if (row.otp_hash !== hashOtp(otp)) {
+    return { ok: false, message: 'Invalid OTP.' };
+  }
+  await run(`UPDATE login_otps SET used = 1 WHERE id = ?`, [row.id]);
+  return { ok: true };
+}
+
+async function markUserEmailVerified(userId) {
+  return run(`UPDATE users SET email_verified = 1 WHERE id = ?`, [userId]);
 }
 
 async function getDoctorUser() {
@@ -441,8 +495,10 @@ async function createPatientProfile({
   sex,
   civilStatus,
   address,
+  address2,
   philhealthNumber,
   idType,
+  nationalIdNumber,
   securityQuestion,
   securityAnswer,
 }) {
@@ -465,12 +521,14 @@ async function createPatientProfile({
       sex,
       civil_status,
       address,
+      address2,
       philhealth_number,
       id_type,
+      national_id_number,
       security_question,
       security_answer,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       patientId,
@@ -486,8 +544,10 @@ async function createPatientProfile({
       sex,
       civilStatus,
       address,
+      address2 || null,
       philhealthNumber || null,
       idType || null,
+      nationalIdNumber || null,
       securityQuestion,
       securityAnswer,
       createdAt,
@@ -509,8 +569,10 @@ async function createPatientProfile({
     sex,
     civilStatus,
     address,
+    address2: address2 || null,
     philhealthNumber: philhealthNumber || null,
     idType: idType || null,
+    nationalIdNumber: nationalIdNumber || null,
     securityQuestion,
     createdAt,
   };
@@ -721,7 +783,7 @@ async function getConsultationsByDoctor(doctorId) {
 
 async function getConsultationById(consultationId) {
   const row = await get(
-    `SELECT c.*, p.first_name, p.middle_name, p.last_name, p.email, p.mobile, p.date_of_birth, p.age, p.sex, p.address, pa.assessment_json 
+    `SELECT c.*, p.first_name, p.middle_name, p.last_name, p.email, p.mobile, p.date_of_birth, p.age, p.sex, p.address, p.address2, pa.assessment_json 
      FROM consultations c 
      JOIN patients p ON c.patient_id = p.user_id 
      LEFT JOIN patient_assessments pa ON c.patient_id = pa.user_id 
@@ -1453,6 +1515,9 @@ module.exports = {
   getUserByEmail,
   validateCredentials,
   getUserById,
+  createLoginOtp,
+  verifyLoginOtp,
+  markUserEmailVerified,
   getDoctorUser,
   createInvite,
   getInviteByToken,

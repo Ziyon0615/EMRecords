@@ -49,13 +49,49 @@ function isDigitsOnly(value, { required = true } = {}) {
   return /^\d+$/.test(text);
 }
 
-function getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber }) {
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber, nationalIdNumber }) {
   if (!isValidPersonName(firstName)) return 'First name can only contain letters.';
   if (!isValidPersonName(middleName, { required: false })) return 'Middle name can only contain letters.';
   if (!isValidPersonName(lastName)) return 'Last name can only contain letters.';
   if (!isDigitsOnly(mobile)) return 'Mobile number can only contain numbers.';
   if (!isDigitsOnly(philhealthNumber, { required: false })) return 'PhilHealth number can only contain numbers.';
+  if (!isDigitsOnly(nationalIdNumber, { required: false })) return 'National ID number can only contain numbers.';
   return '';
+}
+
+function generateOtp() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+async function sendOtpEmail(email, otp) {
+  const expiresIn = '10 minutes';
+  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: email,
+        subject: 'Your EMR login OTP',
+        text: `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.`,
+      }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`OTP email failed: ${body || resp.statusText}`);
+    }
+    return { sent: true };
+  }
+
+  console.log(`[OTP] ${email}: ${otp} (expires in ${expiresIn}). Set RESEND_API_KEY and EMAIL_FROM to send real email.`);
+  return { sent: false, devOtp: process.env.NODE_ENV === 'production' ? undefined : otp };
 }
 
 async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeConsultationId = null }) {
@@ -147,7 +183,9 @@ app.post('/api/register', async (req, res) => {
       sex,
       civilStatus,
       address,
+      address2,
       philhealthNumber,
+      idNumber,
       idType,
       license,
       licenseNumber,
@@ -158,6 +196,10 @@ app.post('/api/register', async (req, res) => {
 
     if (!role || !email || !password) {
       return res.status(400).json({ success: false, message: 'role, email, and password are required.' });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
     }
 
     const allowedRoles = ['admin', 'doctor', 'patient', 'staff'];
@@ -206,7 +248,7 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Date of birth cannot be in the future.' });
       }
 
-      const validationMessage = getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber });
+      const validationMessage = getPatientInputValidationMessage({ firstName, middleName, lastName, mobile, philhealthNumber, nationalIdNumber: idNumber });
       if (validationMessage) {
         return res.status(400).json({ success: false, message: validationMessage });
       }
@@ -242,11 +284,20 @@ app.post('/api/register', async (req, res) => {
         sex,
         civilStatus,
         address,
+        address2,
         philhealthNumber,
         idType,
+        nationalIdNumber: idNumber,
         securityQuestion,
         securityAnswer,
       });
+
+      const otp = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await db.createLoginOtp({ userId: user.id, email, otp, expiresAt });
+      const emailResult = await sendOtpEmail(email, otp);
+      patientProfile.otpEmailSent = emailResult.sent;
+      if (emailResult.devOtp) patientProfile.devOtp = emailResult.devOtp;
 
       if (invite) {
         await db.markInviteUsed(invite.token);
@@ -722,10 +773,14 @@ app.put('/api/profile', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, otp } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
     }
 
     const account = await db.getUserByEmail(email);
@@ -752,6 +807,32 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
+    let verifiedNow = false;
+    if (user.role === 'patient' && Number(user.email_verified || 0) !== 1) {
+      if (!otp) {
+        const loginOtp = generateOtp();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        await db.createLoginOtp({ userId: user.id, email: user.email, otp: loginOtp, expiresAt });
+        const emailResult = await sendOtpEmail(user.email, loginOtp);
+        return res.status(200).json({
+          success: false,
+          otpRequired: true,
+          message: emailResult.sent
+            ? 'OTP sent to your email. Enter it to finish login.'
+            : 'OTP generated. Email sending is not configured, so check the server console.',
+          devOtp: emailResult.devOtp,
+        });
+      }
+
+      const otpResult = await db.verifyLoginOtp({ userId: user.id, otp });
+      if (!otpResult.ok) {
+        return res.status(401).json({ success: false, otpRequired: true, message: otpResult.message });
+      }
+      await db.markUserEmailVerified(user.id);
+      user.email_verified = 1;
+      verifiedNow = true;
+    }
+
     await writeAuditLog({
       userId: user.id,
       userRole: user.role,
@@ -761,7 +842,7 @@ app.post('/api/login', async (req, res) => {
     });
 
     // In a real system, issue a session or token here.
-    return res.status(200).json({ success: true, user: { id: user.id, role: user.role, email: user.email, displayName: user.display_name } });
+    return res.status(200).json({ success: true, user: { id: user.id, role: user.role, email: user.email, displayName: user.display_name, verifiedNow } });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
@@ -1177,6 +1258,10 @@ app.post('/api/admin/users', async (req, res) => {
       return res.status(400).json({ success: false, message: 'role, email, and password are required.' });
     }
 
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+    }
+
     const allowedRoles = ['admin', 'doctor', 'patient', 'staff'];
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role.' });
@@ -1195,7 +1280,7 @@ app.post('/api/admin/users', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Staff position is required.' });
     }
 
-    const user = await db.createUser({ role, email, password, displayName });
+    const user = await db.createUser({ role, email, password, displayName, emailVerified: role !== 'patient' });
     let patientProfile = null;
     let doctorProfile = null;
     let staffProfile = null;

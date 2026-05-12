@@ -101,7 +101,7 @@
           <input type="date" id="dateOfBirth" name="dateOfBirth" />
         </div>
 
-        <div class="field">
+        <div class="field" style="display: none;">
           <label for="age">Age</label>
           <input type="number" id="age" name="age" min="0" required disabled />
         </div>
@@ -112,7 +112,6 @@
             <option value="">Select</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
-            <option value="other">Other</option>
           </select>
         </div>
 
@@ -129,8 +128,13 @@
         </div>
 
         <div class="field">
-          <label for="address">Address</label>
+          <label for="address">Address 1</label>
           <input type="text" id="address" name="address" />
+        </div>
+
+        <div class="field">
+          <label for="address2">Address 2</label>
+          <input type="text" id="address2" name="address2" />
         </div>
 
         <div class="field">
@@ -138,7 +142,7 @@
           <input type="tel" id="mobile" name="mobile" inputmode="numeric" pattern="[0-9]*" required />
         </div>
 
-        <div class="field">
+        <div class="field" style="display: none;">
           <label for="idNumber">ID Number</label>
           <input type="text" id="idNumber" name="idNumber" inputmode="numeric" pattern="[0-9]*" />
         </div>
@@ -298,7 +302,10 @@
             const data = await resp.json();
 
             if (!resp.ok || !data.success) {
-              const message = data.message || 'ID scanning failed.';
+              const rawMessage = data.message || 'ID scanning failed.';
+              const message = /wrong type|does not appear|national id|philippine identification/i.test(rawMessage)
+                ? 'Invalid ID. Please upload a Philippine National ID.'
+                : rawMessage;
               alert(message);
               throw new Error(message);
             }
@@ -537,6 +544,10 @@
       return missing;
     }
 
+    function isValidEmail(value) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    }
+
     function sanitizeNameInput(value) {
       return String(value || '').replace(/[^\p{L}\s.'-]/gu, '');
     }
@@ -601,6 +612,13 @@
 
       const password = document.getElementById('password').value;
       const confirmPassword = document.getElementById('confirmPassword').value;
+      const email = document.getElementById('email').value.trim();
+
+      if (!isValidEmail(email)) {
+        setHint('Please enter a valid email address.', true);
+        document.getElementById('email').focus();
+        return;
+      }
 
       if (password !== confirmPassword) {
         setHint('❌ Passwords do not match.', true);
@@ -625,12 +643,12 @@
 
         const payload = {
         role: 'patient',
-        email: document.getElementById('email').value.trim(),
+        email,
         password: password,
         privacyConsent: document.getElementById('dataPrivacyConsent').checked,
         displayName: `${document.getElementById('firstName').value.trim()} ${document.getElementById('lastName').value.trim()}`,
         inviteToken: inviteToken,
-        username: document.getElementById('email').value.split('@')[0],
+        username: email.split('@')[0],
         firstName: document.getElementById('firstName').value.trim(),
         middleName: document.getElementById('middleName').value.trim(),
         lastName: document.getElementById('lastName').value.trim(),
@@ -641,7 +659,9 @@
         sex: document.getElementById('sex').value,
         civilStatus: document.getElementById('civilStatus').value,
         address: document.getElementById('address').value.trim(),
+        address2: document.getElementById('address2').value.trim(),
         philhealthNumber: document.getElementById('philhealthNumber').value.trim(),
+        idNumber: document.getElementById('idNumber').value.trim(),
         idType: 'patient',
         securityQuestion: document.getElementById('securityQuestion').value.trim(),
         securityAnswer: document.getElementById('securityAnswer').value.trim(),
@@ -665,9 +685,13 @@
           throw new Error(data.message || 'Registration failed.');
         }
 
-        alert('✓ Registration successful! Please complete your health assessment.');
-        localStorage.setItem('authUser', JSON.stringify({ ...data.user, patientProfile: data.patientProfile || null }));
-        window.location.href = 'assessment.html';
+        if (data.patientProfile?.devOtp) {
+          alert(`Registration successful. OTP was generated for development: ${data.patientProfile.devOtp}`);
+        } else {
+          alert('Registration successful. Please check your email for the OTP, then login.');
+        }
+        localStorage.setItem('pendingOtpEmail', email);
+        window.location.href = 'login.html?otp=1';
       } catch (err) {
         console.error('[REGISTER ERROR]', err);
         const message = err.message || 'Internal server error.';
