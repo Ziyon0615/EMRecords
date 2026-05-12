@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const tls = require('tls');
 const express = require('express');
 const cors = require('cors');
 const QRCode = require('qrcode');
@@ -14,7 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
-const APP_RELEASE = 'otp-email-verification-v2';
+const APP_RELEASE = 'otp-email-verification-v3-gmail-smtp';
 const MAX_RECORD_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_RECORD_FILE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 const MAX_DOCTOR_CONSULTATIONS_PER_DAY = 10;
@@ -68,9 +69,127 @@ function generateOtp() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
+function isGmailSmtpConfigured() {
+  return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+}
+
+function getOtpEmailConfigured() {
+  return isGmailSmtpConfigured() || Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+}
+
+function encodeBase64(value) {
+  return Buffer.from(String(value), 'utf8').toString('base64');
+}
+
+function escapeEmailHeader(value) {
+  return String(value || '').replace(/[\r\n]/g, ' ').trim();
+}
+
+function readSmtpResponse(socket) {
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('SMTP response timed out.'));
+    }, 20000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      socket.off('data', onData);
+      socket.off('error', onError);
+    }
+
+    function onError(err) {
+      cleanup();
+      reject(err);
+    }
+
+    function onData(chunk) {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split(/\r?\n/).filter(Boolean);
+      const lastLine = lines[lines.length - 1] || '';
+      if (/^\d{3}\s/.test(lastLine)) {
+        cleanup();
+        resolve(buffer);
+      }
+    }
+
+    socket.on('data', onData);
+    socket.on('error', onError);
+  });
+}
+
+async function sendSmtpCommand(socket, command, expectedCodes) {
+  if (command) socket.write(`${command}\r\n`);
+  const response = await readSmtpResponse(socket);
+  const code = Number(response.slice(0, 3));
+  if (!expectedCodes.includes(code)) {
+    throw new Error(`SMTP command failed (${command || 'connect'}): ${response.trim()}`);
+  }
+  return response;
+}
+
+async function sendGmailSmtpEmail({ to, subject, text }) {
+  const fromEmail = process.env.GMAIL_USER;
+  const fromName = escapeEmailHeader(process.env.EMAIL_FROM_NAME || 'EMR System');
+  const socket = tls.connect({
+    host: 'smtp.gmail.com',
+    port: 465,
+    servername: 'smtp.gmail.com',
+  });
+
+  await new Promise((resolve, reject) => {
+    socket.once('secureConnect', resolve);
+    socket.once('error', reject);
+  });
+
+  try {
+    await sendSmtpCommand(socket, '', [220]);
+    await sendSmtpCommand(socket, 'EHLO emrsystem.local', [250]);
+    await sendSmtpCommand(socket, 'AUTH LOGIN', [334]);
+    await sendSmtpCommand(socket, encodeBase64(fromEmail), [334]);
+    await sendSmtpCommand(socket, encodeBase64(process.env.GMAIL_APP_PASSWORD), [235]);
+    await sendSmtpCommand(socket, `MAIL FROM:<${fromEmail}>`, [250]);
+    await sendSmtpCommand(socket, `RCPT TO:<${to}>`, [250, 251]);
+    await sendSmtpCommand(socket, 'DATA', [354]);
+
+    const safeSubject = escapeEmailHeader(subject);
+    const safeTo = escapeEmailHeader(to);
+    const message = [
+      `From: ${fromName} <${fromEmail}>`,
+      `To: ${safeTo}`,
+      `Subject: ${safeSubject}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      '',
+      String(text || '').replace(/\r?\n/g, '\r\n'),
+      '.',
+      '',
+    ].join('\r\n');
+
+    socket.write(message);
+    await sendSmtpCommand(socket, '', [250]);
+    await sendSmtpCommand(socket, 'QUIT', [221]);
+    return { sent: true };
+  } finally {
+    socket.end();
+  }
+}
+
 async function sendOtpEmail(email, otp, loginUrl = '') {
   const expiresIn = '10 minutes';
   const loginLine = loginUrl ? `\nLogin and enter your OTP here: ${loginUrl}` : '';
+  const text = `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.${loginLine}`;
+
+  if (isGmailSmtpConfigured()) {
+    await sendGmailSmtpEmail({
+      to: email,
+      subject: 'Your EMR login OTP',
+      text,
+    });
+    return { sent: true };
+  }
+
   if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
     const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -82,7 +201,7 @@ async function sendOtpEmail(email, otp, loginUrl = '') {
         from: process.env.EMAIL_FROM,
         to: email,
         subject: 'Your EMR login OTP',
-        text: `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.${loginLine}`,
+        text,
       }),
     });
     if (!resp.ok) {
@@ -92,7 +211,7 @@ async function sendOtpEmail(email, otp, loginUrl = '') {
     return { sent: true };
   }
 
-  console.log(`[OTP] ${email}: ${otp} (expires in ${expiresIn}). Set RESEND_API_KEY and EMAIL_FROM to send real email.`);
+  console.log(`[OTP] ${email}: ${otp} (expires in ${expiresIn}). Set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY and EMAIL_FROM, to send real email.`);
   return { sent: false, devOtp: process.env.NODE_ENV === 'production' ? undefined : otp };
 }
 
@@ -4129,7 +4248,9 @@ app.get('/api/health', (req, res) => {
     success: true,
     status: 'ok',
     release: APP_RELEASE,
-    otpEmailConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
+    otpEmailConfigured: getOtpEmailConfigured(),
+    gmailSmtpConfigured: isGmailSmtpConfigured(),
+    resendConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
   });
 });
 
