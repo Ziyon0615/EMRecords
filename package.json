@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix EMRsystem run build",
-    "start": "npm --prefix EMRsystem start",
+    "start": "node index.js",
     "dev": "npm --prefix EMRsystem run dev"
   }
 }
