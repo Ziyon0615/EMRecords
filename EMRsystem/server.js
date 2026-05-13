@@ -2,7 +2,6 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const tls = require('tls');
 const express = require('express');
 const cors = require('cors');
 const QRCode = require('qrcode');
@@ -15,10 +14,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'Asia/Manila';
-const APP_RELEASE = 'otp-email-verification-v3-gmail-smtp';
+const APP_RELEASE = 'admin-approval-registration';
 const MAX_RECORD_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_RECORD_FILE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
-const MAX_DOCTOR_CONSULTATIONS_PER_DAY = 10;
+const MAX_DOCTOR_CONSULTATIONS_PER_DAY = 8;
 
 function getFrontendUrl(req) {
   return FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
@@ -33,6 +32,50 @@ function getLocalDateString(date = new Date()) {
   }).formatToParts(date);
   const getPart = (type) => parts.find((part) => part.type === type)?.value;
   return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+}
+
+function parseDateOnly(dateString) {
+  const match = String(dateString || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+}
+
+function normalizeDateOnly(dateString) {
+  const parsed = parseDateOnly(dateString);
+  return parsed ? formatDateOnly(parsed) : '';
+}
+
+function formatDateOnly({ year, month, day }) {
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function getDaysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function addDaysToDateOnly(dateString, daysToAdd) {
+  const parsed = parseDateOnly(dateString);
+  if (!parsed) return '';
+  const date = new Date(parsed.year, parsed.month - 1, parsed.day + daysToAdd);
+  return formatDateOnly({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  });
+}
+
+function addMonthsToDateOnly(dateString, monthsToAdd) {
+  const parsed = parseDateOnly(dateString);
+  if (!parsed) return '';
+  const totalMonthIndex = (parsed.year * 12) + (parsed.month - 1) + monthsToAdd;
+  const year = Math.floor(totalMonthIndex / 12);
+  const month = (totalMonthIndex % 12) + 1;
+  const day = Math.min(parsed.day, getDaysInMonth(year, month));
+  return formatDateOnly({ year, month, day });
 }
 
 function isFutureDateString(dateString) {
@@ -65,170 +108,13 @@ function getPatientInputValidationMessage({ firstName, middleName, lastName, mob
   return '';
 }
 
-function generateOtp() {
-  return String(crypto.randomInt(100000, 1000000));
-}
-
-function isGmailSmtpConfigured() {
-  return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-}
-
-function getOtpEmailConfigured() {
-  return isGmailSmtpConfigured() || Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
-}
-
-function encodeBase64(value) {
-  return Buffer.from(String(value), 'utf8').toString('base64');
-}
-
-function escapeEmailHeader(value) {
-  return String(value || '').replace(/[\r\n]/g, ' ').trim();
-}
-
-function readSmtpResponse(socket) {
-  return new Promise((resolve, reject) => {
-    let buffer = '';
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error('SMTP response timed out.'));
-    }, 20000);
-
-    function cleanup() {
-      clearTimeout(timeout);
-      socket.off('data', onData);
-      socket.off('error', onError);
-    }
-
-    function onError(err) {
-      cleanup();
-      reject(err);
-    }
-
-    function onData(chunk) {
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split(/\r?\n/).filter(Boolean);
-      const lastLine = lines[lines.length - 1] || '';
-      if (/^\d{3}\s/.test(lastLine)) {
-        cleanup();
-        resolve(buffer);
-      }
-    }
-
-    socket.on('data', onData);
-    socket.on('error', onError);
-  });
-}
-
-async function sendSmtpCommand(socket, command, expectedCodes) {
-  if (command) socket.write(`${command}\r\n`);
-  const response = await readSmtpResponse(socket);
-  const code = Number(response.slice(0, 3));
-  if (!expectedCodes.includes(code)) {
-    throw new Error(`SMTP command failed (${command || 'connect'}): ${response.trim()}`);
-  }
-  return response;
-}
-
-async function sendGmailSmtpEmail({ to, subject, text }) {
-  const fromEmail = process.env.GMAIL_USER;
-  const fromName = escapeEmailHeader(process.env.EMAIL_FROM_NAME || 'EMR System');
-  const socket = tls.connect({
-    host: 'smtp.gmail.com',
-    port: 465,
-    servername: 'smtp.gmail.com',
-  });
-
-  await new Promise((resolve, reject) => {
-    socket.once('secureConnect', resolve);
-    socket.once('error', reject);
-  });
-
-  try {
-    await sendSmtpCommand(socket, '', [220]);
-    await sendSmtpCommand(socket, 'EHLO emrsystem.local', [250]);
-    await sendSmtpCommand(socket, 'AUTH LOGIN', [334]);
-    await sendSmtpCommand(socket, encodeBase64(fromEmail), [334]);
-    await sendSmtpCommand(socket, encodeBase64(process.env.GMAIL_APP_PASSWORD), [235]);
-    await sendSmtpCommand(socket, `MAIL FROM:<${fromEmail}>`, [250]);
-    await sendSmtpCommand(socket, `RCPT TO:<${to}>`, [250, 251]);
-    await sendSmtpCommand(socket, 'DATA', [354]);
-
-    const safeSubject = escapeEmailHeader(subject);
-    const safeTo = escapeEmailHeader(to);
-    const message = [
-      `From: ${fromName} <${fromEmail}>`,
-      `To: ${safeTo}`,
-      `Subject: ${safeSubject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      String(text || '').replace(/\r?\n/g, '\r\n'),
-      '.',
-      '',
-    ].join('\r\n');
-
-    socket.write(message);
-    await sendSmtpCommand(socket, '', [250]);
-    await sendSmtpCommand(socket, 'QUIT', [221]);
-    return { sent: true };
-  } finally {
-    socket.end();
-  }
-}
-
-async function sendOtpEmail(email, otp, loginUrl = '') {
-  const expiresIn = '10 minutes';
-  const loginLine = loginUrl ? `\nLogin and enter your OTP here: ${loginUrl}` : '';
-  const text = `Your EMR login OTP is ${otp}. It expires in ${expiresIn}.${loginLine}`;
-
-  if (isGmailSmtpConfigured()) {
-    await sendGmailSmtpEmail({
-      to: email,
-      subject: 'Your EMR login OTP',
-      text,
-    });
-    return { sent: true };
-  }
-
-  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-    const resp = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM,
-        to: email,
-        subject: 'Your EMR login OTP',
-        text,
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`OTP email failed: ${body || resp.statusText}`);
-    }
-    return { sent: true };
-  }
-
-  console.log(`[OTP] ${email}: ${otp} (expires in ${expiresIn}). Set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY and EMAIL_FROM, to send real email.`);
-  return { sent: false, devOtp: process.env.NODE_ENV === 'production' ? undefined : otp };
-}
-
-async function sendPatientApprovalOtp({ user, req }) {
-  const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-  await db.createLoginOtp({ userId: user.id, email: user.email, otp, expiresAt });
-  const loginUrl = `${getFrontendUrl(req)}/login.html?otp=1`;
-  return sendOtpEmail(user.email, otp, loginUrl);
-}
-
 async function ensureDoctorDailyCapacity({ doctorId, consultationDate, excludeConsultationId = null }) {
   if (!doctorId || !consultationDate) return;
 
   const scheduledCount = await db.countDoctorConsultationsForDate(doctorId, consultationDate, excludeConsultationId);
   if (scheduledCount >= MAX_DOCTOR_CONSULTATIONS_PER_DAY) {
-    const error = new Error(`This doctor already has ${MAX_DOCTOR_CONSULTATIONS_PER_DAY} patients scheduled for ${consultationDate}. Please choose another date.`);
+    const dateLabel = consultationDate === getLocalDateString() ? 'today' : consultationDate;
+    const error = new Error(`The consultation for ${dateLabel} has reached the limit of ${MAX_DOCTOR_CONSULTATIONS_PER_DAY} requests. Please choose another available date.`);
     error.statusCode = 400;
     throw error;
   }
@@ -473,7 +359,7 @@ app.post('/api/register', async (req, res) => {
       doctorProfile,
       staffProfile,
       message: role === 'patient'
-        ? 'Registration submitted. Please wait for admin approval. OTP will be sent to your email after approval.'
+        ? 'Registration submitted. Your account creation will be reviewed by the admin. You cannot log in until your account is approved.'
         : undefined,
     });
   } catch (err) {
@@ -562,9 +448,10 @@ app.post('/api/consultation-request', async (req, res) => {
       }
 
       if (!doctor) {
+        const dateLabel = consultationDate === today ? 'today' : 'the selected date';
         return res.status(400).json({
           success: false,
-          message: `The selected date/time is already fully booked. Each doctor can accommodate up to ${MAX_DOCTOR_CONSULTATIONS_PER_DAY} patients per day.`,
+          message: `The consultation for ${dateLabel} has reached the limit. Please choose another available date.`,
         });
       }
     } else {
@@ -663,7 +550,30 @@ app.post('/api/my-consultations/:id/cancel', async (req, res) => {
 
 app.get('/api/doctor-availability', async (req, res) => {
   try {
-    const availability = await db.getDoctorAvailability();
+    const availabilityRows = await db.getDoctorAvailability();
+    const availability = await Promise.all(availabilityRows.map(async (slot) => {
+      const timeSlots = typeof slot.available_time_slots === 'string'
+        ? JSON.parse(slot.available_time_slots || '[]')
+        : (slot.available_time_slots || []);
+      const dailyRequestCount = await db.countDoctorConsultationsForDate(slot.doctor_id, slot.available_date);
+      const bookedTimeSlots = [];
+
+      for (const timeSlot of timeSlots) {
+        const slotCount = await db.countDoctorConsultationsForDateTime(slot.doctor_id, slot.available_date, timeSlot);
+        if (slotCount > 0) bookedTimeSlots.push(timeSlot);
+      }
+
+      return {
+        ...slot,
+        daily_request_count: dailyRequestCount,
+        daily_request_limit: MAX_DOCTOR_CONSULTATIONS_PER_DAY,
+        booked_time_slots: bookedTimeSlots,
+        available_time_slots_remaining: dailyRequestCount >= MAX_DOCTOR_CONSULTATIONS_PER_DAY
+          ? []
+          : timeSlots.filter((timeSlot) => !bookedTimeSlots.includes(timeSlot)),
+        is_fully_booked: dailyRequestCount >= MAX_DOCTOR_CONSULTATIONS_PER_DAY || bookedTimeSlots.length >= timeSlots.length,
+      };
+    }));
     return res.json({ success: true, availability });
   } catch (err) {
     console.error('doctor availability error', err);
@@ -923,7 +833,7 @@ app.put('/api/profile', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, password, otp } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
@@ -937,7 +847,7 @@ app.post('/api/login', async (req, res) => {
     if (account && account.status === 'pending') {
       return res.status(403).json({
         success: false,
-        message: 'Your registration is waiting for admin approval. OTP will be sent to your email after approval.',
+        message: 'Your registration is waiting for admin approval. You cannot log in until your account is approved.',
       });
     }
     if (account && account.status && account.status !== 'active') {
@@ -963,32 +873,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
-    let verifiedNow = false;
-    if (user.role === 'patient' && Number(user.email_verified || 0) !== 1) {
-      if (!otp) {
-        const loginOtp = generateOtp();
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-        await db.createLoginOtp({ userId: user.id, email: user.email, otp: loginOtp, expiresAt });
-        const emailResult = await sendOtpEmail(user.email, loginOtp);
-        return res.status(200).json({
-          success: false,
-          otpRequired: true,
-          message: emailResult.sent
-            ? 'OTP sent to your email. Enter it to finish login.'
-            : 'OTP generated. Email sending is not configured, so check the server console.',
-          devOtp: emailResult.devOtp,
-        });
-      }
-
-      const otpResult = await db.verifyLoginOtp({ userId: user.id, otp });
-      if (!otpResult.ok) {
-        return res.status(401).json({ success: false, otpRequired: true, message: otpResult.message });
-      }
-      await db.markUserEmailVerified(user.id);
-      user.email_verified = 1;
-      verifiedNow = true;
-    }
-
     await writeAuditLog({
       userId: user.id,
       userRole: user.role,
@@ -998,7 +882,7 @@ app.post('/api/login', async (req, res) => {
     });
 
     // In a real system, issue a session or token here.
-    return res.status(200).json({ success: true, user: { id: user.id, role: user.role, email: user.email, displayName: user.display_name, verifiedNow } });
+    return res.status(200).json({ success: true, user: { id: user.id, role: user.role, email: user.email, displayName: user.display_name } });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
@@ -1664,30 +1548,31 @@ app.post('/api/admin/users/:id/status', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Admin accounts cannot be activated or deactivated from this screen.' });
     }
 
-    let otpEmailSent = false;
-    if (status === 'active' && target.role === 'patient' && Number(target.email_verified || 0) !== 1) {
-      try {
-        const emailResult = await sendPatientApprovalOtp({ user: target, req });
-        otpEmailSent = Boolean(emailResult.sent);
-      } catch (emailErr) {
-        console.error('Patient approval OTP email error', emailErr);
-        return res.status(502).json({
-          success: false,
-          message: 'Could not approve account because the OTP email failed to send. Please check the email sender setup.',
-        });
-      }
+    if (target.status === 'pending' && target.role === 'patient' && status === 'inactive') {
+      await db.deleteUserCascade(targetUserId);
+      await writeAuditLog({
+        userId,
+        userRole: user.role,
+        action: 'delete',
+        resource: 'User Registration',
+        details: `Rejected and deleted pending patient registration ${target.email}.`,
+      });
+      return res.json({ success: true, deleted: true });
     }
 
     await db.updateUserStatus(targetUserId, status);
+    if (status === 'active' && target.role === 'patient' && Number(target.email_verified || 0) !== 1) {
+      await db.markUserEmailVerified(targetUserId);
+    }
     const updatedUser = await db.getUserById(targetUserId);
     await writeAuditLog({
       userId,
       userRole: user.role,
       action: 'update',
       resource: 'User Status',
-      details: `Set ${target.email} to ${status}${otpEmailSent ? ' and sent OTP.' : ''}.`,
+      details: `Set ${target.email} to ${status}.`,
     });
-    return res.json({ success: true, user: updatedUser, otpEmailSent });
+    return res.json({ success: true, user: updatedUser });
   } catch (err) {
     console.error('admin user status update error', err);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
@@ -4026,7 +3911,8 @@ app.get('/api/doctor/report.diagnostics', handleDoctorDiagnosticsReport);
 
 app.post('/api/doctor/availability', async (req, res) => {
   try {
-    const { userId, availableDate, timeSlots, repeatMode, repeatCount } = req.body;
+    const { userId, timeSlots, repeatMode, repeatCount } = req.body;
+    const availableDate = normalizeDateOnly(req.body.availableDate);
 
     if (!userId || !availableDate || !timeSlots || !Array.isArray(timeSlots)) {
       return res.status(400).json({ success: false, message: 'userId, availableDate, and timeSlots are required.' });
@@ -4039,14 +3925,14 @@ app.post('/api/doctor/availability', async (req, res) => {
 
     const count = Math.min(Math.max(parseInt(repeatCount || 1, 10) || 1, 1), 12);
     const mode = ['weekly', 'monthly'].includes(repeatMode) ? repeatMode : 'none';
-    const startDate = new Date(`${availableDate}T00:00:00`);
     const availability = [];
 
     for (let index = 0; index < count; index += 1) {
-      const nextDate = new Date(startDate);
-      if (mode === 'weekly') nextDate.setDate(startDate.getDate() + (index * 7));
-      if (mode === 'monthly') nextDate.setMonth(startDate.getMonth() + index);
-      const dateValue = nextDate.toISOString().slice(0, 10);
+      const dateValue = mode === 'weekly'
+        ? addDaysToDateOnly(availableDate, index * 7)
+        : mode === 'monthly'
+          ? addMonthsToDateOnly(availableDate, index)
+          : availableDate;
       availability.push(await db.setDoctorAvailability({ doctorId: userId, availableDate: dateValue, timeSlots }));
       if (mode === 'none') break;
     }
@@ -4061,7 +3947,8 @@ app.post('/api/doctor/availability', async (req, res) => {
 async function handleUpdateDoctorAvailability(req, res) {
   try {
     const availabilityId = req.params.id;
-    const { userId, availableDate, timeSlots } = req.body;
+    const { userId, timeSlots } = req.body;
+    const availableDate = normalizeDateOnly(req.body.availableDate);
     if (!userId || !availabilityId || !availableDate || !Array.isArray(timeSlots) || timeSlots.length === 0) {
       return res.status(400).json({ success: false, message: 'userId, availability ID, date, and time slots are required.' });
     }
@@ -4071,7 +3958,7 @@ async function handleUpdateDoctorAvailability(req, res) {
       return res.status(403).json({ success: false, message: 'Only doctors can edit availability.' });
     }
 
-    await db.updateDoctorAvailability(availabilityId, { availableDate, timeSlots });
+    await db.updateDoctorAvailability(availabilityId, { doctorId: userId, availableDate, timeSlots });
     return res.json({ success: true });
   } catch (err) {
     console.error('edit availability error', err);
@@ -4248,9 +4135,6 @@ app.get('/api/health', (req, res) => {
     success: true,
     status: 'ok',
     release: APP_RELEASE,
-    otpEmailConfigured: getOtpEmailConfigured(),
-    gmailSmtpConfigured: isGmailSmtpConfigured(),
-    resendConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
   });
 });
 

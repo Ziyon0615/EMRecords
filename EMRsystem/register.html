@@ -165,10 +165,25 @@
           <input type="text" id="securityAnswer" name="securityAnswer" required />
         </div>
 
-        <!-- Terms Agreement -->
-        <div class="field" style="display: flex; gap: 0.5rem; align-items: flex-start;">
+        <!-- Data Privacy Notice -->
+        <section class="privacy-notice" aria-labelledby="privacyNoticeTitle">
+          <div class="privacy-notice__icon" aria-hidden="true"></div>
+          <div class="privacy-notice__content">
+            <h2 id="privacyNoticeTitle">Privacy Act 2012 (Republic Act No. 10173)</h2>
+            <p>In compliance with the Privacy Act of 2012, we inform you of the following:</p>
+            <ul>
+              <li><strong>Collection of Information:</strong> The personal information requested in this form is collected for the purpose of processing your registration and providing related services.</li>
+              <li><strong>Authority to Collect:</strong> Your personal information is collected pursuant to the provisions of applicable laws and regulations.</li>
+              <li><strong>Voluntary Disclosure:</strong> Providing your personal information is voluntary. However, failure to provide the necessary information may result in inability to process your registration.</li>
+              <li><strong>Use and Disclosure:</strong> Your personal information will be used solely for the purposes stated above and will not be disclosed to any third party except as allowed by law or with your consent.</li>
+              <li><strong>Rights of the Data Subject:</strong> You have the right to access, correct, update, or request the deletion of your personal information in our records, subject to applicable laws and regulations.</li>
+            </ul>
+          </div>
+        </section>
+
+        <div class="privacy-consent">
           <input type="checkbox" id="dataPrivacyConsent" name="privacyConsent" required />
-          <label for="dataPrivacyConsent" style="margin: 0; font-weight: 500;">I consent to the Republic Act No. 10173 (Data Privacy Act of 2012)</label>
+          <label for="dataPrivacyConsent">I have read and understood the Privacy Notice above.</label>
         </div>
 
         <!-- Action Buttons -->
@@ -721,7 +736,7 @@
 
         registrationSubmitted = true;
 
-        alert(data.message || 'Registration submitted. Please wait for admin approval. OTP will be sent to your email after approval.');
+        alert(data.message || 'Registration submitted. Your account creation will be reviewed by the admin. You cannot log in until your account is approved.');
         window.location.href = 'login.html';
       } catch (err) {
         console.error('[REGISTER ERROR]', err);

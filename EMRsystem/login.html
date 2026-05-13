@@ -157,11 +157,6 @@
           <input type="password" id="password" name="password" required minlength="6" placeholder="Password" data-password-toggle />
         </div>
 
-        <div class="field" id="otpField" style="display: none;">
-          <label for="otp">Email OTP</label>
-          <input type="text" id="otp" name="otp" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit code" />
-        </div>
-
         <button type="submit" class="primary" style="width: 100%; margin-top: 1rem;">Login</button>
 
         <p class="hint" id="formHint" style="display: none;"></p>
@@ -183,29 +178,11 @@
   </main>
 
   <script>
-    const otpField = document.getElementById('otpField');
-    const otpInput = document.getElementById('otp');
     const emailInput = document.getElementById('email');
-    const pendingOtpEmail = localStorage.getItem('pendingOtpEmail');
-    const params = new URLSearchParams(window.location.search);
 
     function isValidEmail(value) {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
     }
-
-    function showOtpField() {
-      otpField.style.display = 'block';
-      otpInput.required = true;
-    }
-
-    if (params.get('otp') === '1') {
-      showOtpField();
-      if (pendingOtpEmail) emailInput.value = pendingOtpEmail;
-    }
-
-    otpInput.addEventListener('input', () => {
-      otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
-    });
 
     document.getElementById('authForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -213,7 +190,6 @@
       const email = emailInput.value.trim();
       const password = document.getElementById('password').value;
       const formHint = document.getElementById('formHint');
-      const otp = otpInput.value.trim();
 
       formHint.style.display = 'none';
 
@@ -225,31 +201,19 @@
         return;
       }
 
-      if (localStorage.getItem('pendingOtpEmail') === email && !otp) {
-        showOtpField();
-        formHint.textContent = 'Please enter the OTP sent after registration before logging in.';
-        formHint.style.color = '#ef4444';
-        formHint.style.display = 'block';
-        otpInput.focus();
-        return;
-      }
-
       try {
         const response = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, otp: otp || undefined }),
+          body: JSON.stringify({ email, password }),
         });
 
         const data = await response.json();
 
         if (data.success) {
           localStorage.setItem('authUser', JSON.stringify(data.user));
-          localStorage.removeItem('pendingOtpEmail');
 
-          if (data.user.role === 'patient' && data.user.verifiedNow) {
-            window.location.href = 'assessment.html';
-          } else if (data.user.role === 'patient') {
+          if (data.user.role === 'patient') {
             window.location.href = 'dashboard.html';
           } else if (data.user.role === 'doctor') {
             window.location.href = 'doctor-dashboard.html';
@@ -258,15 +222,6 @@
           } else {
             window.location.href = 'admin-dashboard.html';
           }
-        } else if (data.otpRequired) {
-          showOtpField();
-          localStorage.setItem('pendingOtpEmail', email);
-          formHint.textContent = data.devOtp
-            ? `${data.message || 'Enter OTP to continue.'} Development OTP: ${data.devOtp}`
-            : data.message || 'Enter the OTP sent to your email.';
-          formHint.style.color = data.devOtp ? '#2563eb' : '#ef4444';
-          formHint.style.display = 'block';
-          otpInput.focus();
         } else {
           formHint.textContent = data.message || 'Login failed';
           formHint.style.color = '#ef4444';

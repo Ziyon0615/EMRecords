@@ -293,6 +293,7 @@ await run(`
       FOREIGN KEY (target_user_id) REFERENCES users(id)
     )
   `);
+  await dedupeDoctorAvailability();
   await run(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS target_user_id INTEGER;`);
 
   await run(`
@@ -686,6 +687,31 @@ async function getDoctorAvailability() {
   return rows;
 }
 
+async function dedupeDoctorAvailability() {
+  const duplicates = await getAll(`
+    SELECT doctor_id, available_date, COUNT(*) AS count
+    FROM doctor_availability
+    GROUP BY doctor_id, available_date
+    HAVING COUNT(*) > 1
+  `);
+
+  for (const duplicate of duplicates) {
+    const rows = await getAll(
+      `SELECT * FROM doctor_availability WHERE doctor_id = ? AND available_date = ? ORDER BY id ASC`,
+      [duplicate.doctor_id, duplicate.available_date]
+    );
+    const keeper = rows[0];
+    const mergedSlots = Array.from(new Set(rows.flatMap(row => JSON.parse(row.available_time_slots || '[]')))).sort();
+    await run(
+      `UPDATE doctor_availability SET available_time_slots = ? WHERE id = ?`,
+      [JSON.stringify(mergedSlots), keeper.id]
+    );
+    for (const row of rows.slice(1)) {
+      await run(`DELETE FROM doctor_availability WHERE id = ?`, [row.id]);
+    }
+  }
+}
+
 async function createNotification({ userId, type, message, targetUserId = null }) {
   const createdAt = new Date().toISOString();
   const result = await run(
@@ -803,6 +829,21 @@ async function updateConsultation(consultationId, updates) {
 
 async function setDoctorAvailability({ doctorId, availableDate, timeSlots }) {
   const createdAt = new Date().toISOString();
+  const existing = await get(
+    `SELECT * FROM doctor_availability WHERE doctor_id = ? AND available_date = ? ORDER BY id ASC LIMIT 1`,
+    [doctorId, availableDate]
+  );
+
+  if (existing) {
+    const currentSlots = JSON.parse(existing.available_time_slots || '[]');
+    const mergedSlots = Array.from(new Set([...currentSlots, ...timeSlots])).sort();
+    await run(
+      `UPDATE doctor_availability SET available_time_slots = ? WHERE id = ?`,
+      [JSON.stringify(mergedSlots), existing.id]
+    );
+    return { id: existing.id, doctorId, availableDate, timeSlots: mergedSlots, createdAt: existing.created_at };
+  }
+
   const result = await run(
     `INSERT INTO doctor_availability (doctor_id, available_date, available_time_slots, created_at) VALUES (?, ?, ?, ?)`,
     [doctorId, availableDate, JSON.stringify(timeSlots), createdAt]
@@ -810,7 +851,30 @@ async function setDoctorAvailability({ doctorId, availableDate, timeSlots }) {
   return { id: result.lastID, doctorId, availableDate, timeSlots, createdAt };
 }
 
-async function updateDoctorAvailability(availabilityId, { availableDate, timeSlots }) {
+async function updateDoctorAvailability(availabilityId, { doctorId, availableDate, timeSlots }) {
+  const current = await get(
+    `SELECT * FROM doctor_availability WHERE id = ?`,
+    [availabilityId]
+  );
+  if (!current) return { changes: 0 };
+
+  const ownerId = doctorId || current.doctor_id;
+  const duplicate = await get(
+    `SELECT * FROM doctor_availability WHERE doctor_id = ? AND available_date = ? AND id != ? ORDER BY id ASC LIMIT 1`,
+    [ownerId, availableDate, availabilityId]
+  );
+
+  if (duplicate) {
+    const duplicateSlots = JSON.parse(duplicate.available_time_slots || '[]');
+    const mergedSlots = Array.from(new Set([...duplicateSlots, ...timeSlots])).sort();
+    await run(
+      `UPDATE doctor_availability SET available_time_slots = ? WHERE id = ?`,
+      [JSON.stringify(mergedSlots), duplicate.id]
+    );
+    await run(`DELETE FROM doctor_availability WHERE id = ?`, [availabilityId]);
+    return { changes: 1, mergedIntoId: duplicate.id };
+  }
+
   return run(
     `UPDATE doctor_availability SET available_date = ?, available_time_slots = ? WHERE id = ?`,
     [availableDate, JSON.stringify(timeSlots), availabilityId]

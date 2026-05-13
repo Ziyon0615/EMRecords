@@ -950,6 +950,218 @@
       padding: 2rem;
     }
 
+    .kpi-report {
+      background: #fff;
+      color: #243746;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .kpi-report-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .kpi-report-title h3 {
+      margin: 0;
+      color: #243746;
+      font-size: clamp(1.25rem, 2vw, 1.8rem);
+      font-weight: 700;
+      line-height: 1.15;
+    }
+
+    .kpi-badge {
+      background: #00475f;
+      color: #fff;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+      text-transform: uppercase;
+    }
+
+    .kpi-dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(170px, 0.95fr) minmax(170px, 0.95fr) minmax(300px, 2fr);
+      grid-auto-rows: minmax(210px, auto);
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    .kpi-card {
+      min-width: 0;
+      background: #fff;
+      border: 1px solid #eef2f5;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+      overflow: hidden;
+    }
+
+    .kpi-card h4 {
+      margin: 0;
+      padding: 0.75rem 0.85rem 0.2rem;
+      color: #627180;
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .kpi-card-value {
+      color: #263a48;
+      font-size: clamp(1.8rem, 3vw, 2.2rem);
+      font-weight: 500;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .kpi-chart {
+      width: 100%;
+      height: 132px;
+      display: block;
+    }
+
+    .kpi-chart text {
+      font-size: 9px;
+      fill: #7b8794;
+    }
+
+    .kpi-chart-grid {
+      stroke: #dfe7ed;
+      stroke-width: 1;
+    }
+
+    .kpi-area-fill {
+      fill: rgba(0, 71, 95, 0.26);
+    }
+
+    .kpi-area-line,
+    .kpi-trend-line {
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .kpi-bar {
+      fill: #00475f;
+    }
+
+    .kpi-donut-card {
+      display: grid;
+      grid-template-columns: minmax(150px, 0.9fr) minmax(190px, 1.1fr);
+      align-items: center;
+      gap: 0.5rem;
+      padding-right: 0.8rem;
+    }
+
+    .kpi-donut-card h4 {
+      grid-column: 1 / -1;
+    }
+
+    .kpi-donut-wrap {
+      display: grid;
+      place-items: center;
+      min-height: 146px;
+    }
+
+    .kpi-donut {
+      width: min(145px, 70%);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(var(--segments, #00475f 0 100%));
+      position: relative;
+    }
+
+    .kpi-donut::after {
+      content: "";
+      position: absolute;
+      inset: 28%;
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .kpi-legend {
+      display: grid;
+      gap: 0.35rem;
+      padding: 0.25rem 0 0.65rem;
+      font-size: 0.82rem;
+    }
+
+    .kpi-legend-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.45rem;
+      align-items: center;
+      color: #425466;
+    }
+
+    .kpi-legend-row strong {
+      color: #263a48;
+    }
+
+    .kpi-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      display: inline-block;
+      background: #00475f;
+    }
+
+    .kpi-number-card {
+      background: #00475f;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 0.85rem;
+      min-height: 220px;
+    }
+
+    .kpi-number-card h4 {
+      color: #c9edf5;
+      padding: 0;
+    }
+
+    .kpi-simple-number {
+      color: #fff;
+      font-size: clamp(4.2rem, 13vw, 7.3rem);
+      font-weight: 300;
+      line-height: 0.85;
+      letter-spacing: 0;
+    }
+
+    .kpi-trend-card {
+      grid-column: span 2;
+      min-height: 220px;
+    }
+
+    .kpi-trend-card .kpi-chart {
+      height: 170px;
+    }
+
+    .kpi-trend-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 0 0.85rem;
+      color: #6b7785;
+      font-size: 0.78rem;
+    }
+
+    .kpi-trend-legend span::before {
+      content: "";
+      display: inline-block;
+      width: 0.55rem;
+      height: 0.55rem;
+      margin-right: 0.35rem;
+      border-radius: 50%;
+      background: currentColor;
+      vertical-align: middle;
+    }
+
     .modal {
       display: none;
       position: fixed;
@@ -1143,6 +1355,15 @@
       .stats-grid {
         grid-template-columns: repeat(2, 1fr);
       }
+
+      .kpi-dashboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .kpi-donut-card,
+      .kpi-trend-card {
+        grid-column: span 2;
+      }
     }
 
     @media (max-width: 768px) {
@@ -1195,6 +1416,25 @@
       .admin-header-buttons {
         justify-content: space-between;
         width: 100%;
+      }
+
+      .kpi-dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .kpi-donut-card,
+      .kpi-trend-card {
+        grid-column: auto;
+      }
+
+      .kpi-donut-card {
+        grid-template-columns: 1fr;
+        padding-right: 0;
+      }
+
+      .kpi-report-title {
+        align-items: flex-start;
+        flex-direction: column;
       }
     }
 
@@ -1904,29 +2144,11 @@
         <div class="card">
           <h2>📊 Reports & Analytics</h2>
           
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
             <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
-              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">System Activity Report</h3>
-              <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">Generate comprehensive system activity analysis</p>
-              <button class="btn-export" style="width: 100%;" data-report-type="system">📊 Generate Report</button>
-            </div>
-
-            <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
-              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Consultation Analytics</h3>
-              <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">View consultation statistics and trends</p>
-              <button class="btn-export" style="width: 100%;" data-report-type="consultations">📈 View Analytics</button>
-            </div>
-
-            <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
-              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Security Report</h3>
-              <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">CP-ABE encryption and access control metrics</p>
-              <button class="btn-export" style="width: 100%;" data-report-type="security">🔐 Security Report</button>
-            </div>
-
-            <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: var(--shadow);">
-              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">User Activity Report</h3>
-              <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">Detailed breakdown of user interactions</p>
-              <button class="btn-export" style="width: 100%;" data-report-type="users">👥 User Report</button>
+              <h3 style="margin: 0 0 1rem 0; font-size: 1rem;">Admin Records Report</h3>
+              <p style="margin: 0 0 1.5rem 0; color: #666; font-size: 0.9rem;">Generate one dashboard report for users, consultations, EMR records, roles, and activity trends.</p>
+              <button class="btn-export" style="width: 100%;" data-report-type="system">Generate Admin Report</button>
             </div>
           </div>
 
@@ -2932,7 +3154,285 @@
       `;
     }
 
+    function reportNumber(value) {
+      return Number(value || 0);
+    }
+
+    function reportPercent(part, total) {
+      if (!total) return 0;
+      return Math.max(0, Math.min(100, Math.round((part / total) * 100)));
+    }
+
+    function reportStatusCount(rows = [], names = []) {
+      const wanted = names.map(name => String(name).toLowerCase());
+      return (rows || []).reduce((sum, row) => {
+        const label = String(row.status || row.type || row.role || row.day || '').toLowerCase();
+        return wanted.includes(label) ? sum + reportNumber(row.count) : sum;
+      }, 0);
+    }
+
+    function reportSparkline(rows = [], color = '#91314c') {
+      const values = (rows || []).slice(-5).map(row => reportNumber(row.count));
+      while (values.length < 5) values.unshift(0);
+      const max = Math.max(...values, 1);
+      const points = values.map((value, index) => {
+        const x = 20 + (index * 42);
+        const y = 100 - ((value / max) * 80);
+        return { x, y, value };
+      });
+      const polyline = points.map(point => `${point.x},${point.y}`).join(' ');
+
+      return `
+        <svg class="kpi-chart" viewBox="0 0 200 120" role="img" aria-label="Trend chart">
+          <line x1="18" y1="100" x2="190" y2="100" stroke="#d7d7d7" />
+          <line x1="18" y1="15" x2="18" y2="100" stroke="#d7d7d7" />
+          <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2" />
+          ${points.map(point => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${color}" />`).join('')}
+          ${points.map((point, index) => `<text x="${point.x - 6}" y="116">W${index + 1}</text>`).join('')}
+        </svg>
+      `;
+    }
+
+    function kpiMetric(title, value, delta, rows, color = '#91314c') {
+      const negative = Number(delta) < 0;
+      return `
+        <div class="kpi-metric">
+          <h4>${reportValue(title)}</h4>
+          <div class="kpi-metric-value">${reportNumber(value).toLocaleString()}</div>
+          <div style="text-align:center;"><span class="kpi-delta ${negative ? 'negative' : ''}">${Number(delta) > 0 ? '+' : ''}${delta}</span></div>
+          ${reportSparkline(rows, color)}
+        </div>
+      `;
+    }
+
+    function kpiTheme(label, value, delta, highlight = false) {
+      const negative = Number(delta) < 0;
+      return `
+        <div class="kpi-theme ${highlight ? 'highlight' : ''}">
+          <div>
+            <div class="kpi-theme-label">${reportValue(label)}</div>
+            <div class="kpi-theme-icon"></div>
+            <div class="kpi-theme-value">${reportNumber(value)}%</div>
+            <div class="kpi-theme-change ${negative ? 'negative' : ''}">${Number(delta) > 0 ? '+' : ''}${delta}%</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function reportPieLegend(rows = [], labelKey = 'label') {
+      const palette = ['#00475f', '#087a86', '#1598b4', '#b9d8df', '#f5976d', '#e95b0c'];
+      const total = rows.reduce((sum, row) => sum + reportNumber(row.count), 0);
+      if (!rows.length || !total) return '<p class="report-empty">No records found.</p>';
+
+      return `
+        <div class="kpi-pie-list">
+          ${rows.slice(0, 6).map((row, index) => `
+            <div class="kpi-legend-row">
+              <span class="kpi-dot" style="background:${palette[index % palette.length]}"></span>
+              <span>${reportValue(row[labelKey] || row.role || row.status || row.type || 'Record')}</span>
+              <strong>${reportNumber(row.count).toLocaleString()}</strong>
+            </div>
+          `).join('')}
+          <div class="kpi-legend-row" style="border-top:1px solid #d7d7d7; padding-top:0.4rem;">
+            <span></span><span>Total</span><strong>${total.toLocaleString()}</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    function kpiChartValues(rows = [], minPoints = 6) {
+      const values = (rows || []).map(row => reportNumber(row.count));
+      while (values.length < minPoints) values.unshift(0);
+      return values.slice(-Math.max(minPoints, values.length));
+    }
+
+    function kpiAxisLabel(row, index) {
+      const raw = row?.day || row?.role || row?.status || row?.type || `R${index + 1}`;
+      const label = String(raw).includes('-') ? String(raw).slice(5) : String(raw);
+      return reportValue(label).slice(0, 8);
+    }
+
+    function kpiAreaChart(rows = [], color = '#00475f') {
+      const source = (rows || []).slice(-8);
+      const values = kpiChartValues(source, 6);
+      const max = Math.max(...values, 1);
+      const width = 240;
+      const baseY = 108;
+      const points = values.map((value, index) => {
+        const x = 18 + (index * ((width - 34) / Math.max(values.length - 1, 1)));
+        const y = baseY - ((value / max) * 82);
+        return { x, y };
+      });
+      const line = points.map(point => `${point.x},${point.y}`).join(' ');
+      const area = `18,${baseY} ${line} ${points[points.length - 1].x},${baseY}`;
+
+      return `
+        <svg class="kpi-chart" viewBox="0 0 ${width} 132" role="img" aria-label="Area chart">
+          <line class="kpi-chart-grid" x1="12" y1="38" x2="230" y2="38" />
+          <line class="kpi-chart-grid" x1="12" y1="72" x2="230" y2="72" />
+          <line class="kpi-chart-grid" x1="12" y1="108" x2="230" y2="108" />
+          <polygon class="kpi-area-fill" points="${area}" />
+          <polyline class="kpi-area-line" points="${line}" stroke="${color}" />
+        </svg>
+      `;
+    }
+
+    function kpiBarChart(rows = [], color = '#00475f') {
+      const source = (rows || []).slice(-9);
+      const values = kpiChartValues(source, 7);
+      const max = Math.max(...values, 1);
+      const barWidth = 14;
+      const gap = 9;
+
+      return `
+        <svg class="kpi-chart" viewBox="0 0 240 132" role="img" aria-label="Column chart">
+          <line class="kpi-chart-grid" x1="12" y1="38" x2="230" y2="38" />
+          <line class="kpi-chart-grid" x1="12" y1="72" x2="230" y2="72" />
+          <line class="kpi-chart-grid" x1="12" y1="108" x2="230" y2="108" />
+          ${values.map((value, index) => {
+            const h = Math.max(6, (value / max) * 88);
+            const x = 22 + (index * (barWidth + gap));
+            return `<rect class="kpi-bar" x="${x}" y="${108 - h}" width="${barWidth}" height="${h}" fill="${color}" />`;
+          }).join('')}
+        </svg>
+      `;
+    }
+
+    function kpiDonutSegments(rows = []) {
+      const palette = ['#00475f', '#087a86', '#1598b4', '#b9d8df', '#f5976d', '#e95b0c'];
+      const visibleRows = (rows || []).filter(row => reportNumber(row.count) > 0).slice(0, 6);
+      const total = visibleRows.reduce((sum, row) => sum + reportNumber(row.count), 0);
+      if (!total) return '#dbe5ea 0deg 360deg';
+      let cursor = 0;
+      return visibleRows.map((row, index) => {
+        const slice = (reportNumber(row.count) / total) * 360;
+        const start = cursor;
+        const end = cursor + slice;
+        cursor = end;
+        return `${palette[index % palette.length]} ${start}deg ${end}deg`;
+      }).join(', ');
+    }
+
+    function kpiMultiTrendChart(series = []) {
+      const width = 720;
+      const height = 170;
+      const left = 24;
+      const right = 14;
+      const top = 18;
+      const baseY = 132;
+      const allValues = series.flatMap(item => item.values);
+      const max = Math.max(...allValues, 1);
+      const labels = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      const paths = series.map(item => {
+        const points = item.values.map((value, index) => {
+          const x = left + (index * ((width - left - right) / Math.max(item.values.length - 1, 1)));
+          const y = baseY - ((value / max) * (baseY - top));
+          return { x, y };
+        });
+        const line = points.map(point => `${point.x},${point.y}`).join(' ');
+        return `
+          <polyline class="kpi-trend-line" points="${line}" stroke="${item.color}" />
+          ${points.map(point => `<circle cx="${point.x}" cy="${point.y}" r="3.5" fill="${item.color}" />`).join('')}
+        `;
+      }).join('');
+
+      return `
+        <svg class="kpi-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend chart">
+          <line class="kpi-chart-grid" x1="${left}" y1="36" x2="${width - right}" y2="36" />
+          <line class="kpi-chart-grid" x1="${left}" y1="72" x2="${width - right}" y2="72" />
+          <line class="kpi-chart-grid" x1="${left}" y1="108" x2="${width - right}" y2="108" />
+          <line class="kpi-chart-grid" x1="${left}" y1="${baseY}" x2="${width - right}" y2="${baseY}" />
+          ${paths}
+          ${labels.map((label, index) => {
+            const x = left + (index * ((width - left - right) / (labels.length - 1)));
+            return `<text x="${x - 9}" y="160">${label}</text>`;
+          }).join('')}
+        </svg>
+      `;
+    }
+
+    function buildKpiDashboard(report) {
+      const data = report.data || {};
+      const totals = data.totals || {};
+      const userRows = data.users?.byStatus || [];
+      const consultationRows = data.consultations?.byStatus || [];
+      const notificationRows = data.security?.notifications || [];
+      const trendRows = data.consultations?.dailyTrend || [];
+      const roleRows = data.users?.byRole || [];
+
+      const totalUsers = reportNumber(totals.totalUsers);
+      const totalConsultations = reportNumber(totals.totalConsultations);
+      const activeConsultations = reportNumber(totals.activeConsultations);
+      const totalEmrs = reportNumber(totals.totalEmrs);
+      const pendingUsers = reportStatusCount(userRows, ['pending']);
+      const inactiveUsers = reportStatusCount(userRows, ['inactive']);
+      const completedConsultations = reportStatusCount(consultationRows, ['completed', 'finished', 'done', 'resolved']);
+      const pendingConsultations = reportStatusCount(consultationRows, ['pending', 'under-review']);
+      const noticeCount = notificationRows.reduce((sum, row) => sum + reportNumber(row.count), 0);
+      const totalPages = totalUsers + totalConsultations + totalEmrs + reportNumber(totals.totalMessages);
+      const healthy = Math.max(totalUsers - pendingUsers - inactiveUsers, 0);
+      const activeUserPercent = reportPercent(healthy, Math.max(totalUsers, 1));
+      const consultationCompletion = reportPercent(completedConsultations, Math.max(totalConsultations, 1));
+      const roleTrendRows = roleRows.map((row, index) => ({ count: row.count, day: kpiAxisLabel(row, index) }));
+      const trendValues = kpiChartValues(trendRows, 12);
+      const roleValues = kpiChartValues(roleRows, 12);
+      const emrValues = kpiChartValues(data.users?.recent?.map((row, index) => ({ count: index + 1 })), 12);
+
+      return `
+        <div class="kpi-report">
+          <div class="kpi-report-title">
+            <h3>${reportValue(report.title)} Dashboard</h3>
+            <span class="kpi-badge">${new Date(report.generatedAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
+          </div>
+
+          <div class="kpi-dashboard-grid">
+            <div class="kpi-card">
+              <h4>Historic - Users</h4>
+              <div class="kpi-card-value">${totalUsers.toLocaleString()}</div>
+              ${kpiAreaChart(roleTrendRows, '#00475f')}
+            </div>
+
+            <div class="kpi-card">
+              <h4>Historic - Consultations</h4>
+              <div class="kpi-card-value">${totalConsultations.toLocaleString()}</div>
+              ${kpiBarChart(trendRows, '#00475f')}
+            </div>
+
+            <div class="kpi-card kpi-donut-card">
+              <h4>List - User Roles</h4>
+              <div class="kpi-donut-wrap">
+                <div class="kpi-donut" style="--segments:${kpiDonutSegments(roleRows)};"></div>
+              </div>
+              ${reportPieLegend(roleRows, 'role')}
+            </div>
+
+            <div class="kpi-card kpi-number-card">
+              <h4>Total Records</h4>
+              <div class="kpi-simple-number">${totalPages.toLocaleString()}</div>
+              <div>Users ${activeUserPercent}% active | Consultations ${consultationCompletion}% completed</div>
+            </div>
+
+            <div class="kpi-card kpi-trend-card">
+              <h4>Trend - Records</h4>
+              <div class="kpi-trend-legend">
+                <span style="color:#00475f;">Consultations</span>
+                <span style="color:#087a86;">User Roles</span>
+                <span style="color:#1598b4;">EMR Records</span>
+              </div>
+              ${kpiMultiTrendChart([
+                { values: trendValues, color: '#00475f' },
+                { values: roleValues, color: '#087a86' },
+                { values: emrValues, color: '#1598b4' },
+              ])}
+            </div>
+          </div>
+
+        </div>
+      `;
+    }
+
     function buildReportDetails(report) {
+      return buildKpiDashboard(report);
       const data = report.data || {};
       const totals = data.totals || {};
 
@@ -3155,6 +3655,193 @@
                 padding: 1rem;
                 text-align: center;
               }
+              .kpi-report-title {
+                display: flex;
+                justify-content: space-between;
+                gap: 1rem;
+                margin-bottom: 1rem;
+              }
+              .kpi-report-title h3 {
+                margin: 0;
+                font-size: 2rem;
+                font-weight: 400;
+              }
+              .kpi-badge {
+                background: #4b4b54;
+                color: #fff;
+                padding: 0.25rem 0.65rem;
+                font-weight: 700;
+                height: fit-content;
+              }
+              .kpi-dashboard-grid {
+                display: grid;
+                grid-template-columns: 260px 1fr 160px;
+                gap: 0.6rem;
+              }
+              .kpi-card,
+              .kpi-metric {
+                border: 1px solid #e5e7eb;
+                background: #fff;
+                break-inside: avoid;
+              }
+              .kpi-card h4,
+              .kpi-metric h4 {
+                margin: 0;
+                padding: 0.6rem;
+                border-bottom: 1px solid #d7d7d7;
+              }
+              .kpi-thematic { grid-column: span 2; padding: 0.6rem; }
+              .kpi-theme-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.45rem;
+              }
+              .kpi-theme {
+                min-height: 120px;
+                display: grid;
+                place-items: center;
+                text-align: center;
+                background: #fbfbfb;
+                border: 1px solid #efefef;
+              }
+              .kpi-theme.highlight { border: 2px solid #ff2a1f; }
+              .kpi-theme-icon,
+              .kpi-issue-icon {
+                background: #444a58;
+                border-radius: 50px 50px 0 0;
+                margin: 0.35rem auto;
+              }
+              .kpi-theme-icon { width: 48px; height: 34px; }
+              .kpi-theme-value,
+              .kpi-metric-value,
+              .kpi-pages-total {
+                font-size: 1.6rem;
+                font-weight: 800;
+                text-align: center;
+              }
+              .kpi-delta {
+                display: inline-block;
+                background: #00a84f;
+                color: #fff;
+                padding: 0.1rem 0.4rem;
+                font-size: 0.75rem;
+              }
+              .kpi-delta.negative { background: #ff120b; }
+              .kpi-ring-wrap { min-height: 160px; display: grid; place-items: center; }
+              .kpi-ring {
+                --score: 50;
+                width: 130px;
+                height: 130px;
+                border-radius: 50%;
+                background: conic-gradient(#444a58 calc(var(--score) * 1%), #f0f0f0 0);
+                display: grid;
+                place-items: center;
+              }
+              .kpi-ring-value {
+                width: 96px;
+                height: 96px;
+                border-radius: 50%;
+                background: #fff;
+                display: grid;
+                place-items: center;
+                font-size: 1.6rem;
+                font-weight: 800;
+              }
+              .kpi-stack { height: 22px; margin: 0.4rem; display: flex; }
+              .kpi-stack span:nth-child(1) { background: #414653; }
+              .kpi-stack span:nth-child(2) { background: #6a7080; }
+              .kpi-stack span:nth-child(3) { background: #9ca3b4; }
+              .kpi-stack span:nth-child(4) { background: #91314c; }
+              .kpi-stack span:nth-child(5) { background: #bd4c6c; }
+              .kpi-legend { display: grid; gap: 0.35rem; padding: 0.5rem; font-size: 0.78rem; }
+              .kpi-legend-row { display: grid; grid-template-columns: auto 1fr auto; gap: 0.35rem; }
+              .kpi-dot { width: 0.3rem; height: 0.3rem; background: #444a58; margin-top: 0.45rem; }
+              .kpi-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+              .kpi-metric { padding: 0.6rem; min-height: 240px; }
+              .kpi-chart { width: 100%; height: 90px; }
+              .kpi-issues {
+                background: #fdebec;
+                display: grid;
+                place-items: center;
+                text-align: center;
+                padding: 0.75rem;
+              }
+              .kpi-issue-icon { width: 74px; height: 48px; background: #91314c; }
+              .kpi-detail-grid { margin-top: 0.75rem; }
+              .kpi-report { max-width: 100%; }
+              .kpi-report-title h3 { font-size: 1.5rem; font-weight: 700; }
+              .kpi-dashboard-grid {
+                grid-template-columns: 1fr 1fr 2fr;
+                grid-auto-rows: minmax(180px, auto);
+                gap: 0.55rem;
+              }
+              .kpi-card { overflow: hidden; box-shadow: none; }
+              .kpi-card h4 {
+                color: #627180;
+                font-size: 0.72rem;
+                text-transform: uppercase;
+              }
+              .kpi-card-value {
+                color: #263a48;
+                font-size: 1.8rem;
+                font-weight: 500;
+                line-height: 1;
+                text-align: center;
+              }
+              .kpi-donut-card {
+                display: grid;
+                grid-template-columns: minmax(120px, 0.9fr) minmax(160px, 1.1fr);
+                align-items: center;
+                padding-right: 0.5rem;
+              }
+              .kpi-donut-card h4 { grid-column: 1 / -1; }
+              .kpi-donut-wrap { display: grid; place-items: center; min-height: 120px; }
+              .kpi-donut {
+                width: 110px;
+                aspect-ratio: 1;
+                border-radius: 50%;
+                background: conic-gradient(var(--segments, #00475f 0 100%));
+                position: relative;
+              }
+              .kpi-donut::after {
+                content: "";
+                position: absolute;
+                inset: 28%;
+                border-radius: 50%;
+                background: #fff;
+              }
+              .kpi-number-card {
+                background: #00475f;
+                color: #fff;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                padding: 0.75rem;
+              }
+              .kpi-number-card h4 { color: #c9edf5; padding: 0; }
+              .kpi-simple-number {
+                color: #fff;
+                font-size: 5.8rem;
+                font-weight: 300;
+                line-height: 0.85;
+              }
+              .kpi-trend-card { grid-column: span 2; }
+              .kpi-trend-card .kpi-chart { height: 145px; }
+              .kpi-trend-legend {
+                display: flex;
+                gap: 0.85rem;
+                padding: 0 0.6rem;
+                color: #6b7785;
+                font-size: 0.72rem;
+              }
+              .kpi-area-fill { fill: rgba(0, 71, 95, 0.26); }
+              .kpi-area-line,
+              .kpi-trend-line {
+                fill: none;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+              }
               @media print {
                 body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
               }
@@ -3272,7 +3959,9 @@
 
     async function updatePendingUserStatus(userId, targetStatus) {
       try {
-        const actionText = targetStatus === 'active' ? 'approve this registration and send OTP' : 'reject this registration';
+        const actionText = targetStatus === 'active'
+          ? 'approve this registration'
+          : 'reject and delete this registration';
         const confirmed = confirm(`Are you sure you want to ${actionText}?`);
         if (!confirmed) return;
 
@@ -3287,8 +3976,8 @@
         await loadUsers();
         await loadAdminNotifications();
         alert(targetStatus === 'active'
-          ? 'Registration approved. OTP was sent to the user email.'
-          : 'Registration rejected.');
+          ? 'Registration approved. The patient can now log in.'
+          : 'Registration rejected and deleted.');
       } catch (err) {
         console.error('Pending user status error', err);
         alert('Failed to update registration: ' + err.message);

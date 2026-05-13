@@ -557,6 +557,51 @@
       font-weight: 600;
     }
 
+    .time-slot-picker {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 0.65rem;
+      padding: 0.75rem;
+      border: 1px solid #dbe4ef;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .time-slot-option {
+      border: 1px solid #bfdbfe;
+      background: #ffffff;
+      color: #1e3a8a;
+      border-radius: 8px;
+      padding: 0.7rem 0.85rem;
+      text-align: left;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .time-slot-option:hover,
+    .time-slot-option.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    .time-slot-option.booked,
+    .time-slot-option:disabled {
+      background: #f1f5f9;
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      cursor: not-allowed;
+    }
+
+    .time-slot-option span {
+      display: block;
+      margin-top: 0.2rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
     .status-badge {
       display: inline-block;
       padding: 0.35rem 0.9rem;
@@ -1000,7 +1045,15 @@
               </div>
               <div class="field">
                 <label for="requestedTime">Preferred Time</label>
-                <input type="time" id="requestedTime" name="requestedTime" required />
+                <select id="requestedTime" name="requestedTime" required>
+                  <option value="">Select an available date first</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Available Time Slots</label>
+              <div id="availableTimeSlotsPreview" class="time-slot-picker">
+                <p class="hint" style="text-align:left;">Click an available date in the Doctor Availability calendar to view open time slots.</p>
               </div>
             </div>
             <div class="field">
@@ -1062,6 +1115,51 @@
       availabilityMonth: '',
       recordFiles: [],
     };
+    const TIME_SLOT_LABELS = {
+      '08:00': '8:00 AM - 9:00 AM',
+      '09:00': '9:00 AM - 10:00 AM',
+      '10:00': '10:00 AM - 11:00 AM',
+      '11:00': '11:00 AM - 12:00 NN',
+      '13:00': '1:00 PM - 2:00 PM',
+      '14:00': '2:00 PM - 3:00 PM',
+      '15:00': '3:00 PM - 4:00 PM',
+      '16:00': '4:00 PM - 5:00 PM',
+    };
+
+    function formatTimeSlot(slot) {
+      return TIME_SLOT_LABELS[slot] || slot;
+    }
+
+    function getLocalDateValue(date = new Date()) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function parseSlotArray(value) {
+      if (Array.isArray(value)) return value;
+      if (!value) return [];
+      try {
+        return JSON.parse(value || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function getRemainingSlots(item) {
+      const remaining = parseSlotArray(item.available_time_slots_remaining);
+      if (item.available_time_slots_remaining !== undefined) return remaining;
+
+      const booked = new Set(parseSlotArray(item.booked_time_slots));
+      return parseSlotArray(item.available_time_slots).filter(slot => !booked.has(slot));
+    }
+
+    function getAvailabilityStatusText(item) {
+      const count = Number(item.daily_request_count || 0);
+      const limit = Number(item.daily_request_limit || 8);
+      return `${count} / ${limit} booked`;
+    }
 
     if (!authUser || !authUser.id || authUser.role !== 'patient') {
       alert('Access denied. Please log in as a patient.');
@@ -1084,12 +1182,18 @@
     const availabilityNextMonth = document.getElementById('availabilityNextMonth');
     const requestedDateInput = document.getElementById('requestedDate');
     if (requestedDateInput) {
-      requestedDateInput.min = new Date().toISOString().slice(0, 10);
-      requestedDateInput.addEventListener('change', () => validateSelectedAvailability(true));
+      requestedDateInput.min = getLocalDateValue();
+      requestedDateInput.addEventListener('change', () => {
+        renderAvailableTimeSlotsForDate(requestedDateInput.value);
+        validateSelectedAvailability(true);
+      });
     }
     const requestedTimeInput = document.getElementById('requestedTime');
     if (requestedTimeInput) {
-      requestedTimeInput.addEventListener('change', () => validateSelectedAvailability(true));
+      requestedTimeInput.addEventListener('change', () => {
+        renderAvailableTimeSlotsForDate(document.getElementById('requestedDate').value, requestedTimeInput.value);
+        validateSelectedAvailability(true);
+      });
     }
     availabilityMonthSelect?.addEventListener('change', (event) => setAvailabilityMonth(event.target.value));
     availabilityPrevMonth?.addEventListener('click', () => moveAvailabilityMonth(-1));
@@ -1306,7 +1410,7 @@
     }
 
     function canCancelConsultation(c) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       return ['pending', 'scheduled', 'under-review'].includes(c.status)
         && c.consultation_date
         && c.consultation_date > today;
@@ -1333,7 +1437,7 @@
 
     function renderOverviewStats() {
       const consultations = overviewState.consultations || [];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       const upcoming = consultations.filter(c => c.status === 'scheduled' && c.consultation_date >= today);
       const pending = consultations.filter(c => c.status === 'pending' || c.status === 'under-review');
       const completed = consultations.filter(c => c.status === 'completed');
@@ -1433,7 +1537,7 @@
           </div>
           <div class="data-row">
             <div class="data-label">Next Slot</div>
-            <div class="data-value">${a.available_date} · ${JSON.parse(a.available_time_slots)[0] || '—'}</div>
+            <div class="data-value">${a.available_date} - ${formatTimeSlot(getRemainingSlots(a)[0]) || '-'}</div>
           </div>
         </div>
       `).join('');
@@ -1482,7 +1586,7 @@
     }
 
     function getAvailabilityMonthOptions(availability = overviewState.availability) {
-      const todayMonth = new Date().toISOString().slice(0, 7);
+      const todayMonth = getLocalDateValue().slice(0, 7);
       const months = new Set([todayMonth]);
 
       (availability || []).forEach(item => {
@@ -1501,7 +1605,7 @@
 
     function syncAvailabilityMonthOptions() {
       const months = getAvailabilityMonthOptions();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       const upcomingMonth = (overviewState.availability || [])
         .map(item => item.available_date)
         .filter(date => date && date >= today)
@@ -1560,7 +1664,7 @@
         return;
       }
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       list.innerHTML = availability.map(a => {
         const isPast = a.available_date < today;
         return `
@@ -1575,7 +1679,11 @@
           </div>
           <div class="data-row">
             <div class="data-label">Available Slots</div>
-            <div class="data-value">${JSON.parse(a.available_time_slots).join(', ')}</div>
+            <div class="data-value">${getRemainingSlots(a).length ? getRemainingSlots(a).map(formatTimeSlot).join(', ') : 'Fully booked'}</div>
+          </div>
+          <div class="data-row">
+            <div class="data-label">Requests</div>
+            <div class="data-value">${getAvailabilityStatusText(a)}</div>
           </div>
         </div>
       `;
@@ -1583,13 +1691,77 @@
     }
 
     function getAvailabilityForSelection(date, time) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       return (overviewState.availability || []).filter(item => {
         if (item.available_date !== date || item.available_date < today) return false;
-        const slots = JSON.parse(item.available_time_slots || '[]');
+        const slots = getRemainingSlots(item);
         return !time || slots.includes(time);
       });
     }
+
+    function getAvailableTimesForDate(date) {
+      return Array.from(new Set(getAvailabilityForSelection(date, '').flatMap(getRemainingSlots))).sort();
+    }
+
+    function getAllTimesForDate(date) {
+      const today = getLocalDateValue();
+      return Array.from(new Set((overviewState.availability || [])
+        .filter(item => item.available_date === date && item.available_date >= today)
+        .flatMap(item => parseSlotArray(item.available_time_slots))))
+        .sort();
+    }
+
+    function renderAvailableTimeSlotsForDate(date, selectedTime = '') {
+      const select = document.getElementById('requestedTime');
+      const preview = document.getElementById('availableTimeSlotsPreview');
+      if (!select || !preview) return;
+
+      const availableTimes = date ? getAvailableTimesForDate(date) : [];
+      const allTimes = date ? getAllTimesForDate(date) : [];
+      select.innerHTML = availableTimes.length
+        ? '<option value="">Select time slot</option>' + availableTimes.map(time => `<option value="${time}">${formatTimeSlot(time)}</option>`).join('')
+        : '<option value="">No available slots</option>';
+
+      if (selectedTime && availableTimes.includes(selectedTime)) {
+        select.value = selectedTime;
+      } else if (availableTimes.length === 1) {
+        select.value = availableTimes[0];
+      }
+
+      if (!date) {
+        preview.innerHTML = '<p class="hint" style="text-align:left;">Click an available date in the Doctor Availability calendar to view open time slots.</p>';
+        return;
+      }
+
+      if (!allTimes.length) {
+        preview.innerHTML = '<p class="hint" style="text-align:left; color: var(--danger);">No time slots are set for this date. Please choose another available date.</p>';
+        return;
+      }
+
+      if (!availableTimes.length) {
+        preview.innerHTML = '<p class="hint" style="text-align:left; color: var(--danger);">All time slots for this date are already booked. Please choose another available date.</p>';
+        return;
+      }
+
+      preview.innerHTML = allTimes.map(time => {
+        const isAvailable = availableTimes.includes(time);
+        return `
+        <button type="button" class="time-slot-option ${select.value === time ? 'active' : ''} ${isAvailable ? '' : 'booked'}" ${isAvailable ? `onclick="selectAvailableTimeSlot('${time}')"` : 'disabled'}>
+          ${formatTimeSlot(time)}
+          ${isAvailable ? '' : '<span>Booked</span>'}
+        </button>
+      `;
+      }).join('');
+    }
+
+    function selectAvailableTimeSlot(time) {
+      const select = document.getElementById('requestedTime');
+      if (select) select.value = time;
+      renderAvailableTimeSlotsForDate(document.getElementById('requestedDate').value, time);
+      validateSelectedAvailability(true);
+    }
+
+    window.selectAvailableTimeSlot = selectAvailableTimeSlot;
 
     function validateSelectedAvailability(showMessage = false) {
       const date = document.getElementById('requestedDate').value;
@@ -1611,10 +1783,9 @@
 
     function selectAvailabilityDate(date, firstTime) {
       document.getElementById('requestedDate').value = date;
-      if (firstTime) {
-        document.getElementById('requestedTime').value = firstTime;
-      }
-      consultationHint.textContent = `Selected available schedule: ${date}${firstTime ? ` at ${firstTime}` : ''}.`;
+      renderAvailableTimeSlotsForDate(date, firstTime);
+      const selectedTime = document.getElementById('requestedTime').value;
+      consultationHint.textContent = `Selected available schedule: ${date}${selectedTime ? ` at ${formatTimeSlot(selectedTime)}` : ''}.`;
       consultationHint.style.color = 'var(--success)';
       switchSection('consultation');
     }
@@ -1625,10 +1796,10 @@
       const calendar = document.getElementById('availabilityCalendar');
       if (!calendar) return;
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       const byDate = (availability || []).reduce((acc, item) => {
         if (!acc[item.available_date]) acc[item.available_date] = [];
-        acc[item.available_date].push(item);
+        if (getRemainingSlots(item).length) acc[item.available_date].push(item);
         return acc;
       }, {});
 
@@ -1654,14 +1825,14 @@
         const label = entries.length
           ? `${entries.length} doctor${entries.length > 1 ? 's' : ''}`
           : '';
-        const firstSlots = entries.flatMap(entry => JSON.parse(entry.available_time_slots || '[]'));
+        const firstSlots = entries.flatMap(getRemainingSlots);
         const firstTime = firstSlots[0] || '';
-        const slots = firstSlots.slice(0, 2).join(', ');
+        const slots = firstSlots.slice(0, 2).map(formatTimeSlot).join(', ');
         const clickHandler = entries.length && !isPast
           ? `onclick="selectAvailabilityDate('${date}', '${firstTime}')"`
           : '';
         cells.push(`
-          <div class="${className}" ${clickHandler} title="${entries.map(entry => `${entry.doctor_name}: ${JSON.parse(entry.available_time_slots || '[]').join(', ')}`).join('\n')}">
+          <div class="${className}" ${clickHandler} title="${entries.map(entry => `${entry.doctor_name}: ${getRemainingSlots(entry).map(formatTimeSlot).join(', ')}`).join('\n')}">
             <strong>${day}</strong>
             <span>${isPast && entries.length ? 'Done' : label}</span>
             <small>${slots}</small>
@@ -2037,3 +2208,5 @@
   </script>
 </body>
 </html>
+
+

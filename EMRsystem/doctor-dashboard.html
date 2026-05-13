@@ -887,6 +887,16 @@
         <div class="doc-main">
           <div class="card">
             <h2>Patient Consultation Requests</h2>
+            <div class="data-card" style="border-left-color:#0066cc; margin-bottom:1rem;">
+              <div class="data-row">
+                <div class="data-label">Today's Consultation Requests</div>
+                <div class="data-value"><strong id="todayConsultationCount">0</strong> / 8</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">Status</div>
+                <div class="data-value" id="todayConsultationLimitStatus">Accepting requests today.</div>
+              </div>
+            </div>
             <p id="consultationsDebug" style="color: #666; font-size: 0.85rem; margin: 0 0 0.75rem 0;">Loading consultations...</p>
             <div id="consultationsList" class="card-list"></div>
             <div id="availabilityList" class="card-list" style="display: none;"></div>
@@ -985,30 +995,30 @@
           </div>
           <div class="field">
             <label>Available Time Slots</label>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem; margin-top: 0.5rem;">
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="08:00" /> 8:00 AM
+                <input type="checkbox" class="time-check" value="08:00" /> 8:00 AM - 9:00 AM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="09:00" /> 9:00 AM
+                <input type="checkbox" class="time-check" value="09:00" /> 9:00 AM - 10:00 AM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="10:00" /> 10:00 AM
+                <input type="checkbox" class="time-check" value="10:00" /> 10:00 AM - 11:00 AM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="11:00" /> 11:00 AM
+                <input type="checkbox" class="time-check" value="11:00" /> 11:00 AM - 12:00 NN
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="14:00" /> 2:00 PM
+                <input type="checkbox" class="time-check" value="13:00" /> 1:00 PM - 2:00 PM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="15:00" /> 3:00 PM
+                <input type="checkbox" class="time-check" value="14:00" /> 2:00 PM - 3:00 PM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="16:00" /> 4:00 PM
+                <input type="checkbox" class="time-check" value="15:00" /> 3:00 PM - 4:00 PM
               </label>
               <label style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="checkbox" class="time-check" value="17:00" /> 5:00 PM
+                <input type="checkbox" class="time-check" value="16:00" /> 4:00 PM - 5:00 PM
               </label>
             </div>
           </div>
@@ -1144,6 +1154,47 @@
     let selectedConsultationId = null;
     let consultationsData = [];
     let availabilityData = [];
+    const MAX_DAILY_CONSULTATIONS = 8;
+    const ACTIVE_CONSULTATION_STATUSES = new Set(['pending', 'scheduled', 'under-review']);
+    const TIME_SLOT_LABELS = {
+      '08:00': '8:00 AM - 9:00 AM',
+      '09:00': '9:00 AM - 10:00 AM',
+      '10:00': '10:00 AM - 11:00 AM',
+      '11:00': '11:00 AM - 12:00 NN',
+      '13:00': '1:00 PM - 2:00 PM',
+      '14:00': '2:00 PM - 3:00 PM',
+      '15:00': '3:00 PM - 4:00 PM',
+      '16:00': '4:00 PM - 5:00 PM',
+    };
+
+    function formatTimeSlot(slot) {
+      return TIME_SLOT_LABELS[slot] || slot;
+    }
+
+    function getLocalDateValue(date = new Date()) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function isActiveConsultation(c) {
+      return ACTIVE_CONSULTATION_STATUSES.has(String(c.status || '').toLowerCase());
+    }
+
+    function updateDailyConsultationCounter() {
+      const countEl = document.getElementById('todayConsultationCount');
+      const statusEl = document.getElementById('todayConsultationLimitStatus');
+      if (!countEl || !statusEl) return;
+
+      const today = getLocalDateValue();
+      const todaysCount = (consultationsData || []).filter(c => isActiveConsultation(c) && c.consultation_date === today).length;
+      countEl.textContent = todaysCount;
+      statusEl.textContent = todaysCount >= MAX_DAILY_CONSULTATIONS
+        ? 'Daily limit reached. New patient requests for today are blocked.'
+        : `${MAX_DAILY_CONSULTATIONS - todaysCount} request slot${MAX_DAILY_CONSULTATIONS - todaysCount === 1 ? '' : 's'} remaining today.`;
+      statusEl.style.color = todaysCount >= MAX_DAILY_CONSULTATIONS ? 'var(--danger)' : 'var(--success)';
+    }
 
     function setDoctorNotificationBadge(notifications = []) {
       const badge = document.getElementById('doctorNotifBadge');
@@ -1315,6 +1366,7 @@
         if (!data.success) throw new Error(data.message);
 
         consultationsData = data.consultations || [];
+        updateDailyConsultationCounter();
         document.getElementById('consultationsDebug').textContent = `Loaded ${consultationsData.length} consultations.`;
         renderConsultationsList();
         if (document.getElementById('schedule-management')?.classList.contains('active')) {
@@ -1345,7 +1397,7 @@
             </div>
             <div class="data-row">
               <div class="data-label">Time Slots</div>
-              <div class="data-value">${slots.length ? slots.join(', ') : 'None'}</div>
+              <div class="data-value">${slots.length ? slots.map(formatTimeSlot).join(', ') : 'None'}</div>
             </div>
           </div>
         `;
@@ -1370,9 +1422,7 @@
 
       listEl.style.display = '';
       availabilityEl.style.display = 'none';
-
-      const now = new Date();
-      const today = now.toISOString().slice(0, 10);
+      const today = getLocalDateValue();
 
       const searchTerm = searchQuery;
       const filteredBySearch = searchTerm
@@ -1606,7 +1656,7 @@
     window.selectConsultation = selectConsultation;
 
     function canMarkNoShow(c) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       return ['pending', 'scheduled', 'under-review'].includes(c.status)
         && c.consultation_date
         && c.consultation_date <= today;
@@ -1691,7 +1741,9 @@
       if (!debug || !list) return;
 
       const active = (consultationsData || []).filter(c => !['completed', 'denied', 'cancelled', 'marked-no-show'].includes(c.status));
-      debug.textContent = `Showing ${active.length} active consultations.`;
+      const today = getLocalDateValue();
+      const todaysCount = active.filter(c => c.consultation_date === today).length;
+      debug.textContent = `Showing ${active.length} active consultations. Today: ${todaysCount} / ${MAX_DAILY_CONSULTATIONS}.`;
 
       if (!active.length) {
         list.innerHTML = '<p style="color: var(--muted);">No active consultations available for scheduling.</p>';
@@ -1750,7 +1802,11 @@
     const availableDateInput = document.getElementById('availableDate');
 
     function getCurrentMonthValue() {
-      return new Date().toISOString().slice(0, 7);
+      return getLocalDateValue().slice(0, 7);
+    }
+
+    function getDateInputValue(inputOrValue) {
+      return String(typeof inputOrValue === 'string' ? inputOrValue : inputOrValue?.value || '').slice(0, 10);
     }
 
     function getMonthLastDay(monthValue) {
@@ -1802,7 +1858,7 @@
             <div class="data-row" style="margin-top:0.75rem;">
               <div class="data-label">Slots</div>
               <div class="time-slots">
-                ${slots.map(t => `<div class="time-slot">${t}</div>`).join('')}
+                ${slots.map(t => `<div class="time-slot">${formatTimeSlot(t)}</div>`).join('')}
               </div>
             </div>
           </div>
@@ -1816,7 +1872,7 @@
     document.getElementById('availabilityForm').addEventListener('submit', async (event) => {
       event.preventDefault();
 
-      const availableDate = availableDateInput.value;
+      const availableDate = getDateInputValue(availableDateInput);
       const repeatMode = document.getElementById('repeatMode').value;
       const repeatCount = document.getElementById('repeatCount').value;
       const timeSlots = Array.from(document.querySelectorAll('.time-check:checked')).map(cb => cb.value);
@@ -1867,7 +1923,7 @@
         const resp = await fetch(`${API_BASE_URL}/api/doctor/availability/${availabilityId}/update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUser.id, availableDate: formData.get('availableDate'), timeSlots }),
+          body: JSON.stringify({ userId: authUser.id, availableDate: getDateInputValue(formData.get('availableDate')), timeSlots }),
         });
         const data = await readJsonResponse(resp);
         if (!data.success) throw new Error(data.message);
@@ -2511,7 +2567,9 @@
     loadNotifications();
     loadProfile();
     loadAllPatients();
+    setInterval(loadConsultations, 30000);
   });
   </script>
 </body>
 </html>
+
