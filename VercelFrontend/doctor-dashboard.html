@@ -1361,9 +1361,15 @@
 
     async function loadConsultations() {
       try {
-        const resp = await fetch(`${API_BASE_URL}/api/doctor/consultations?userId=${authUser.id}`);
+        const url = `${API_BASE_URL}/api/doctor/consultations?userId=${authUser.id}`;
+        const resp = await fetch(url);
+        
+        if (!resp.ok) {
+          throw new Error(`Server responded with ${resp.status}: ${resp.statusText}. API: ${API_BASE_URL}`);
+        }
+        
         const data = await resp.json();
-        if (!data.success) throw new Error(data.message);
+        if (!data.success) throw new Error(data.message || 'Failed to load consultations');
 
         consultationsData = data.consultations || [];
         updateDailyConsultationCounter();
@@ -1373,7 +1379,11 @@
           renderScheduleManagement();
         }
       } catch (err) {
-        document.getElementById('consultationsList').innerHTML = `<p style="color: var(--danger);">Error loading consultations: ${err.message}</p>`;
+        console.error('loadConsultations error:', err);
+        const listEl = document.getElementById('consultationsList');
+        const debugEl = document.getElementById('consultationsDebug');
+        if (listEl) listEl.innerHTML = `<p style="color: var(--danger);">Error loading consultations: ${err.message}</p>`;
+        if (debugEl) debugEl.innerHTML = `<p style="color: var(--danger); font-size: 0.8rem;">Debug: ${err.message}</p>`;
       }
     }
 
