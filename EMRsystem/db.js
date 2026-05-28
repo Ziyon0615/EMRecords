@@ -1349,9 +1349,11 @@ async function getAllEMRRecords({ search } = {}) {
     SELECT 
       pa.id,
       p.user_id,
+      p.user_id AS patient_id,
       p.first_name,
       p.last_name,
-      pa.assessment_json,
+      (pa.assessment_encrypted IS NOT NULL AND pa.assessment_encrypted <> '') AS is_encrypted,
+      pa.policy,
       pa.created_at
     FROM patient_assessments pa
     JOIN patients p ON pa.user_id = p.user_id

@@ -1655,13 +1655,12 @@ app.get('/api/admin/emr-records', async (req, res) => {
       search: req.query.search,
     });
     
-    // CP-ABE: Mark that assessment data is encrypted for admins
-    const processedRecords = records.map(record => {
-      if (record.assessment_json) {
-        record.assessment_data = record.assessment_json;
-      }
-      return record;
-    });
+    // CP-ABE policy: admins may manage EMR metadata, but cannot receive assessment plaintext.
+    const processedRecords = records.map(({ assessment_json, assessment_encrypted, policy, ...record }) => ({
+      ...record,
+      assessment_data: null,
+      is_encrypted: Boolean(record.is_encrypted),
+    }));
     
     return res.json({ success: true, records: processedRecords });
   } catch (err) {

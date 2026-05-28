@@ -2842,7 +2842,7 @@
             <div>${patientName}</div>
             <div>Assessment</div>
             <div>${recordDate}</div>
-            <div><span class="status-badge status-active">Active</span></div>
+            <div><span class="status-badge status-active">${r.is_encrypted ? 'CP-ABE Protected' : 'Active'}</span></div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button class="action-btn view" data-action="view-emr">View</button>
             </div>
@@ -2868,7 +2868,6 @@
     function viewEMRRecord(record) {
       const patientName = `${record.first_name} ${record.last_name}`;
       const recordDate = new Date(record.created_at).toLocaleString();
-      const assessmentDetails = record.assessment_data ? JSON.parse(record.assessment_data) : {};
       
       let detailsText = `EMR Record Details\n\n`;
       detailsText += `Record ID: #EMR${String(record.id).padStart(3, '0')}\n`;
@@ -2876,18 +2875,11 @@
       detailsText += `Patient ID: #PT${String(record.patient_id).padStart(3, '0')}\n`;
       detailsText += `Created: ${recordDate}\n`;
       detailsText += `\n--- Assessment Data ---\n`;
-      
-      if (Object.keys(assessmentDetails).length > 0) {
-        for (const [key, value] of Object.entries(assessmentDetails)) {
-          detailsText += `${key}: ${value}\n`;
-        }
-      } else {
-        detailsText += '🔐 [CP-ABE ENCRYPTED]\n\n';
-        detailsText += 'Admin access is BLOCKED by CP-ABE policy.\n';
-        detailsText += 'Only PATIENTS and DOCTORS can decrypt their assessments.\n\n';
-        detailsText += 'This is an intentional security restriction to protect\n';
-        detailsText += 'patient privacy and enforce fine-grained access control.';
-      }
+      detailsText += '[CP-ABE ENCRYPTED]\n\n';
+      detailsText += 'Admin access is BLOCKED by CP-ABE policy.\n';
+      detailsText += 'Only PATIENTS and DOCTORS can decrypt their assessments.\n\n';
+      detailsText += 'This is an intentional security restriction to protect\n';
+      detailsText += 'patient privacy and enforce fine-grained access control.';
       
       alert(detailsText);
     }
